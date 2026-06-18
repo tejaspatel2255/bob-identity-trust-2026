@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { getRiskEvents, reviewRiskEvent } from "../../lib/api";
+import { api } from "../../lib/api";
 import { RiskEvent } from "../../lib/types";
 import { 
   ArrowLeft,
@@ -37,7 +37,7 @@ export default function LiveFeed() {
   const loadEvents = async () => {
     try {
       setLoading(true);
-      const data = await getRiskEvents();
+      const data = await api.getEvents();
       setEvents(data);
     } catch (err: any) {
       showToast(err.message || "Failed to load events", "error");
@@ -55,7 +55,10 @@ export default function LiveFeed() {
     let result = events;
 
     if (filterAction !== "ALL") {
-      result = result.filter((e) => e.action === filterAction);
+      result = result.filter((e) => {
+        const actionStr = typeof e.action === 'object' ? (e.action as any).action : e.action;
+        return actionStr === filterAction;
+      });
     }
 
     if (filterType !== "ALL") {
@@ -69,7 +72,7 @@ export default function LiveFeed() {
   // Handle Review Actions
   const handleReview = async (id: string, outcome: "FALSE_POSITIVE" | "CONFIRMED_FRAUD") => {
     try {
-      await reviewRiskEvent(id, { reviewed: true, review_outcome: outcome });
+      await api.reviewEvent(id, true, outcome);
       
       // Update local state to show review status instantly
       setEvents((prev) =>
@@ -196,13 +199,14 @@ export default function LiveFeed() {
                   else if (score >= 31) scoreClass = "bg-soc-amber/10 text-soc-amber border-soc-amber/30";
 
                   // Action Badge
+                  const actionStr = typeof ev.action === 'object' ? (ev.action as any).action : ev.action;
                   let actionClass = "text-soc-green";
-                  if (ev.action === "HARD_BLOCK" || score >= 66) actionClass = "text-soc-red font-bold";
-                  else if (ev.action === "STEP_UP_AUTH" || score >= 31) actionClass = "text-soc-amber";
+                  if (actionStr === "HARD_BLOCK" || score >= 66) actionClass = "text-soc-red font-bold";
+                  else if (actionStr === "STEP_UP_AUTH" || score >= 31) actionClass = "text-soc-amber";
 
                   return (
                     <tr key={ev.id} className="hover:bg-soc-bg/25 transition-colors">
-                      {/* Timestamp */}
+                      {/* Time */}
                       <td className="p-4 font-mono text-[11px] text-soc-textSecondary whitespace-nowrap">
                         {new Date(ev.timestamp).toLocaleString("en-IN")}
                       </td>
@@ -231,7 +235,7 @@ export default function LiveFeed() {
                       {/* Action Pill */}
                       <td className="p-4 font-semibold tracking-wide">
                         <span className={actionClass}>
-                          {ev.action ? ev.action.replace(/_/g, " ") : "SILENT PASS"}
+                          {ev.action ? (typeof ev.action === 'object' ? (ev.action as any).action.replace(/_/g, " ") : ev.action.replace(/_/g, " ")) : "SILENT_PASS"}
                         </span>
                       </td>
 

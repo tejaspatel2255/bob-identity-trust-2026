@@ -1,28 +1,14 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import dynamic from "next/dynamic";
-import { NodeModel, EdgeModel } from "../lib/types";
+import dynamic from 'next/dynamic';
+import { GraphNode, GraphEdge } from "../lib/types";
 
-// Import react-force-graph-2d dynamically with SSR disabled and explicit module default resolution
-const ForceGraph2D = dynamic(
-  () => import("react-force-graph-2d").then((mod) => mod.default || mod),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-full w-full items-center justify-center bg-soc-bg text-soc-cyan">
-        <div className="flex flex-col items-center gap-3">
-          <span className="h-8 w-8 animate-spin rounded-full border-2 border-soc-cyan border-t-transparent"></span>
-          <span className="font-mono text-xs uppercase tracking-widest animate-pulse">Initializing Trust Canvas...</span>
-        </div>
-      </div>
-    ),
-  }
-);
+const ForceGraph2D = dynamic(() => import('react-force-graph-2d').then((mod) => mod.default || mod), { ssr: false });
 
 interface GraphCanvasProps {
-  nodes: NodeModel[];
-  edges: EdgeModel[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
   onNodeSelect?: (node: any) => void;
   height?: number;
   highlightNeighbors?: boolean;
@@ -46,6 +32,9 @@ export default function GraphCanvas({
   const [highlightLinks, setHighlightLinks] = useState<Set<any>>(new Set());
   const [hoverNode, setHoverNode] = useState<any>(null);
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -59,12 +48,18 @@ export default function GraphCanvas({
     const handleResize = () => {
       if (containerRef.current) {
         const w = containerRef.current.clientWidth;
-        setWidth(w > 200 ? w : 600);
+        // Check difference to prevent infinite resize loop oscillations
+        setWidth((prev) => {
+          if (w > 200 && Math.abs(prev - w) > 8) {
+            return w;
+          }
+          return prev;
+        });
       }
     };
 
     window.addEventListener("resize", handleResize);
-    
+
     // Check after layout settles
     const timer = setTimeout(handleResize, 100);
 
@@ -88,13 +83,30 @@ export default function GraphCanvas({
       (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
     );
 
+    // Create unique key for current structure to avoid unnecessary re-simulations
+    const currentKeys = JSON.stringify({
+      nodes: filteredNodes.map(n => n.id).sort(),
+      edges: filteredEdges.map(e => `${e.source}-${e.target}-${e.type}`).sort()
+    });
+
+    if (containerRef.current) {
+      const prevKeys = (containerRef.current as any).__graphKeys;
+      if (prevKeys === currentKeys) {
+        return; // Skip update to prevent resetting simulation
+      }
+      (containerRef.current as any).__graphKeys = currentKeys;
+    }
+
     // 3. Map to format required by react-force-graph
-    const mappedNodes = filteredNodes.map((n) => ({
-      id: n.id,
-      type: n.type,
-      name: n.properties.name || n.properties.fingerprint || n.id,
-      properties: n.properties,
-    }));
+    const mappedNodes = filteredNodes.map((n) => {
+      const props = n.properties as any;
+      return {
+        id: n.id,
+        type: n.type,
+        name: props.name || props.fingerprint || n.id,
+        properties: n.properties,
+      };
+    });
 
     const mappedLinks = filteredEdges.map((e) => ({
       id: `${e.source}-${e.target}-${e.type}`,
@@ -106,6 +118,15 @@ export default function GraphCanvas({
 
     setGraphData({ nodes: mappedNodes, links: mappedLinks });
   }, [nodes, edges, filterTypes]);
+
+  // Adjust forces to spread nodes and prevent clumping
+  useEffect(() => {
+    if (fgRef.current) {
+      const fg = fgRef.current;
+      fg.d3Force("charge").strength(-160);
+      fg.d3Force("link").distance(65);
+    }
+  }, [graphData]);
 
   // Color mapping based on design brief
   const getNodeColor = (type: string) => {
@@ -163,7 +184,7 @@ export default function GraphCanvas({
       graphData.links.forEach((link) => {
         const sourceId = typeof link.source === "object" ? link.source.id : link.source;
         const targetId = typeof link.target === "object" ? link.target.id : link.target;
-        
+
         if (sourceId === node.id) {
           neighbors.add(targetId);
           neighborLinks.add(link);
@@ -207,6 +228,14 @@ export default function GraphCanvas({
       setHighlightLinks(new Set());
     }
   };
+
+  if (!mounted) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-[#6B84A8] font-mono text-sm" style={{ height }}>
+        Initializing graph engine...
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="relative w-full rounded-lg border border-soc-border bg-soc-surface/40 overflow-hidden">

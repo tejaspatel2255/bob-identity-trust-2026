@@ -1,22 +1,39 @@
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
 
-NEO4J_URI = "neo4j+s://d9338079.databases.neo4j.io"
-NEO4J_PASSWORD = "mSKo4DGVpZWkfmeojQnyAzEtfp6hUGs2DrOenq2XFZw"
+def find_and_load_env():
+    # check current directory, parent, and grandparent
+    paths = [
+        Path.cwd(),
+        Path.cwd().parent,
+        Path.cwd().parent.parent
+    ]
+    for p in paths:
+        env_file = p / '.env'
+        if env_file.exists():
+            load_dotenv(dotenv_path=env_file)
+            print(f"Loaded .env from: {env_file.resolve()}")
+            return
+    # Fallback to standard dotenv loading
+    load_dotenv()
 
-usernames = ["d9338079", "neo4j"]
+find_and_load_env()
 
-for username in usernames:
-    print(f"Testing connectivity with username: {username} ...")
-    try:
-        driver = GraphDatabase.driver(NEO4J_URI, auth=(username, NEO4J_PASSWORD))
-        driver.verify_connectivity()
-        print(f"SUCCESS: Connected with username: {username}")
-        # Run a simple query
-        with driver.session() as session:
-            res = session.run("MATCH (e:Employee {id: 'EMP_RAMESH_PATEL'}) RETURN e.id").single()
-            print("EMP_RAMESH_PATEL exists:", res is not None)
-        driver.close()
-        break
-    except Exception as e:
-        print(f"FAILED for {username}: {e}")
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
+if not all([NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD]):
+    print("Error: Missing Neo4j credentials. Check your .env file.")
+    exit(1)
+
+print(f"Testing connectivity to {NEO4J_URI} using username: {NEO4J_USERNAME} ...")
+try:
+    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
+    driver.verify_connectivity()
+    print("SUCCESS: Connected successfully!")
+    driver.close()
+except Exception as e:
+    print(f"FAILED: {e}")

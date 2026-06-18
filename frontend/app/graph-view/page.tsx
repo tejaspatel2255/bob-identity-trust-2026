@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { getGlobalGraph } from "../../lib/api";
-import { NodeModel, EdgeModel, SubgraphResponse } from "../../lib/types";
+import { api } from "../../lib/api";
+import { GraphData } from "../../lib/types";
 import GraphCanvas from "../../components/GraphCanvas";
 import { 
   ArrowLeft, 
@@ -17,7 +17,7 @@ import {
 const ALL_NODE_TYPES = ["Customer", "Device", "Session", "Employee", "Account", "Beneficiary"];
 
 export default function GlobalGraphView() {
-  const [graph, setGraph] = useState<SubgraphResponse | null>(null);
+  const [graph, setGraph] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<any>(null);
@@ -27,7 +27,7 @@ export default function GlobalGraphView() {
     try {
       setLoading(true);
       setError(null);
-      const data = await getGlobalGraph();
+      const data = await api.getFullGraph();
       setGraph(data);
     } catch (err: any) {
       console.error("Global graph fetch error:", err);

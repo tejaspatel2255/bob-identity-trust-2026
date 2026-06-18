@@ -2,8 +2,8 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { scoreRisk } from "../../lib/api";
-import { Persona, RiskScoreResponse } from "../../lib/types";
+import { api } from "../../lib/api";
+import { Persona } from "../../lib/types";
 import PersonaCard from "../../components/PersonaCard";
 import RiskScoreRing from "../../components/RiskScoreRing";
 import TypewriterText from "../../components/TypewriterText";
@@ -74,7 +74,7 @@ const DEMO_PERSONAS: Persona[] = [
 
 export default function Personas() {
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
-  const [result, setResult] = useState<RiskScoreResponse | null>(null);
+  const [result, setResult] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,7 +85,7 @@ export default function Personas() {
       setResult(null);
       setSelectedPersona(persona);
 
-      const response = await scoreRisk({
+      const response = await api.scoreEvent({
         entity_type: persona.entityType,
         entity_id: persona.entityId,
         event_data: persona.eventData

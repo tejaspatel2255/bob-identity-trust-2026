@@ -9,6 +9,14 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from neo4j import Session
+from pathlib import Path
+from dotenv import load_dotenv
+
+# .env auto-discovery (Fix 1)
+_env_path = Path(__file__).parent / ".env"
+if not _env_path.exists():
+    _env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=_env_path)
 
 # Supabase client import
 from supabase import create_client, Client
@@ -32,8 +40,16 @@ from backend.models import (
     ViewedCustomerModel,
     RiskScoreRequest,
     RiskScoreResponse,
-    RiskEventReviewRequest
+    RiskEventReviewRequest,
+    ReviewUpdate
 )
+
+# Wrapper to support with db.get_session() syntax in endpoint (Fix 4)
+class DbWrapper:
+    @staticmethod
+    def get_session():
+        return Neo4jDatabase.get_driver().session()
+db = DbWrapper()
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -42,12 +58,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS Middleware (Allow All Origins for Frontend Dev)
+# Configure CORS Middleware (Allow All Origins for Frontend Dev) (Fix 3)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -599,69 +615,32 @@ def get_customer_subgraph(
     }
 
 
-@app.get(
-    "/graph/all",
-    response_model=SubgraphResponse,
-    summary="Retrieve the entire graph database for visualization"
-)
-def get_all_graph(db: Session = Depends(get_db_session)):
+@app.get("/graph/all")
+def get_full_graph():
     """
-    Returns all nodes and relationships in the database up to a limit of 1000 nodes
-    for a global force-graph visual.
+    Returns up to 500 nodes and all edges between them.
+    Used by the /graph-view frontend page.
     """
     query = """
-        MATCH (n)
-        WITH n LIMIT 800
-        OPTIONAL MATCH (n)-[r]->(m)
-        RETURN collect(distinct n) AS nodes, collect(distinct r) AS rels
+    MATCH (n)
+    WITH n LIMIT 500
+    OPTIONAL MATCH (n)-[r]->(m)
+    WHERE m IS NOT NULL
+    RETURN
+        collect(DISTINCT {id: toString(id(n)), type: labels(n)[0], properties: properties(n)}) AS nodes,
+        collect(DISTINCT {
+            source: toString(id(n)),
+            target: toString(id(m)),
+            type: type(r),
+            properties: properties(r)
+        }) AS edges
     """
-    record = db.run(query).single()
-
-    nodes_out = []
-    edges_out = []
-
-    if record:
-        for node in record["nodes"]:
-            label = list(node.labels)[0] if node.labels else "Unknown"
-            node_id = node.get("fingerprint") if label == "Device" else node.get("id")
-            
-            properties = {k: serialize_neo4j_value(v) for k, v in node.items()}
-            
-            nodes_out.append(
-                NodeModel(
-                    id=str(node_id),
-                    type=label,
-                    properties=properties
-                )
-            )
-
-        for rel in record["rels"]:
-            if not rel:
-                continue
-            start_node = rel.start_node
-            end_node = rel.end_node
-            
-            start_label = list(start_node.labels)[0] if start_node.labels else "Unknown"
-            end_label = list(end_node.labels)[0] if end_node.labels else "Unknown"
-            
-            source_id = start_node.get("fingerprint") if start_label == "Device" else start_node.get("id")
-            target_id = end_node.get("fingerprint") if end_label == "Device" else end_node.get("id")
-            
-            properties = {k: serialize_neo4j_value(v) for k, v in rel.items()}
-
-            edges_out.append(
-                EdgeModel(
-                    source=str(source_id),
-                    target=str(target_id),
-                    type=rel.type,
-                    properties=properties
-                )
-            )
-
-    return {
-        "nodes": nodes_out,
-        "edges": edges_out
-    }
+    with db.get_session() as session:
+        result = session.run(query).single()
+        if not result:
+            return {"nodes": [], "edges": []}
+        edges = [e for e in result["edges"] if e["target"] is not None]
+        return {"nodes": result["nodes"], "edges": edges}
 
 
 
@@ -751,59 +730,43 @@ def get_employee_activity(
     }
 
 
-@app.get(
-    "/health",
-    response_model=HealthResponse,
-    summary="Get system health and basic graph metrics"
-)
-def health_check(
-    db: Session = Depends(get_db_session)
-):
-    """
-    Monitors database connectivity and retrieves real-time node, edge, and fraud status metrics.
-    """
-    neo4j_connected = False
+@app.get("/health")
+async def health_check():
+    neo4j_ok = False
     total_nodes = 0
     total_edges = 0
-    flagged_last_24h = 0
-
     try:
-        # Check connectivity
-        db.run("RETURN 1").single()
-        neo4j_connected = True
-
-        # Total nodes
-        nodes_res = db.run("MATCH (n) RETURN count(n) AS count").single()
-        total_nodes = nodes_res["count"] if nodes_res else 0
-
-        # Total edges
-        edges_res = db.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
-        total_edges = edges_res["count"] if edges_res else 0
-
-        # Flagged in last 24h
-        cutoff_time_str = (datetime.now(pytz.timezone("Asia/Kolkata")) - timedelta(hours=24)).isoformat()
-        flagged_res = db.run(
-            """
-            MATCH (s:Session {label: 'FRAUD'})
-            WHERE s.timestamp >= datetime($cutoff_time)
-            RETURN count(s) AS count
-            """,
-            {"cutoff_time": cutoff_time_str}
-        ).single()
-        
-        flagged_last_24h = flagged_res["count"] if flagged_res else 0
-
+        with db.get_session() as session:
+            node_result = session.run("MATCH (n) RETURN count(n) AS count").single()
+            edge_result = session.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
+            total_nodes = node_result["count"] if node_result else 0
+            total_edges = edge_result["count"] if edge_result else 0
+            neo4j_ok = True
     except Exception as e:
-        # If DB connection fails, we report neo4j_connected=False but still return 200 health check response
-        # or raise an exception. The requirements say return neo4j_connected: bool, so we handle it gracefully.
-        print(f"Health check warning: {e}")
+        print(f"[Setu/Health] Neo4j check failed: {e}")
+
+    flagged_24h = 0
+    sb = get_supabase()
+    if sb:
+        try:
+            from datetime import datetime, timedelta, timezone
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            result = (sb.table("risk_events")
+                      .select("id", count="exact")
+                      .gte("timestamp", cutoff)
+                      .neq("action_level", "LOW")
+                      .execute())
+            flagged_24h = result.count or 0
+        except Exception as e:
+            print(f"[Setu/Health] Supabase check failed: {e}")
 
     return {
-        "neo4j_connected": neo4j_connected,
+        "neo4j_connected": neo4j_ok,
         "total_nodes": total_nodes,
         "total_edges": total_edges,
-        "flagged_last_24h": flagged_last_24h,
-        "model_version": "Setu-GNN-v1.0.0"
+        "flagged_last_24h": flagged_24h,
+        "model_version": "setu-mock-v1.0",
+        "supabase_connected": sb is not None
     }
 
 
@@ -839,11 +802,15 @@ async def get_risk_score(event: RiskScoreRequest):
     timestamp_str = datetime.now(pytz.timezone("Asia/Kolkata")).isoformat()
     event_uuid = str(uuid.uuid4())
 
+    # Resolve customer_id (Fix 8)
+    customer_id = event.entity_id if event.entity_type == "CUSTOMER_SESSION" else None
+
     # Create event dictionary for local in-memory storage
     local_row = {
         "id": event_uuid,
         "entity_id": event.entity_id,
         "entity_type": event.entity_type,
+        "customer_id": customer_id,
         "risk_score": risk_score,
         "shap_attributions": shap_attrs,
         "explanation": explanation_res["explanation"],
@@ -861,12 +828,14 @@ async def get_risk_score(event: RiskScoreRequest):
     IN_MEMORY_RISK_EVENTS.append(local_row)
 
     # 4. Insert records into Supabase if client is initialized
-    if supabase_client:
+    sb = get_supabase()
+    if sb:
         try:
             supabase_row = {
                 "id": event_uuid,
                 "entity_id": event.entity_id,
                 "entity_type": event.entity_type,
+                "customer_id": customer_id,
                 "risk_score": risk_score,
                 "shap_attributions": shap_attrs,
                 "explanation": explanation_res["explanation"],
@@ -879,7 +848,7 @@ async def get_risk_score(event: RiskScoreRequest):
                 "reviewed": False,
                 "review_outcome": None
             }
-            supabase_client.table("risk_events").insert(supabase_row).execute()
+            sb.table("risk_events").insert(supabase_row).execute()
         except Exception as e:
             print(f"Error logging risk event to Supabase: {e}")
     else:
@@ -888,6 +857,7 @@ async def get_risk_score(event: RiskScoreRequest):
     return {
         "entity_id": event.entity_id,
         "entity_type": event.entity_type,
+        "customer_id": customer_id,
         "risk_score": risk_score,
         "shap_attributions": shap_attrs,
         "explanation": explanation_res["explanation"],
@@ -920,43 +890,54 @@ def get_risk_events():
     return sorted(IN_MEMORY_RISK_EVENTS, key=lambda x: x["timestamp"], reverse=True)
 
 
-@app.patch(
-    "/risk/events/{event_id}",
-    summary="Update review status of a risk event"
-)
-def review_risk_event(event_id: str, review: RiskEventReviewRequest):
-    """
-    Updates the reviewed status and review_outcome of a risk event by ID or entity_id.
-    Works for both Supabase and in-memory storage.
-    """
-    updated = False
-    
-    # 1. Update in-memory storage
+def get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        return None
+    return create_client(url, key)
+
+@app.patch("/risk/events/{event_id}")
+async def review_event(event_id: str, update: ReviewUpdate):
+    """Update review outcome of a flagged event. Used by /live-feed review buttons."""
+    # Update in-memory storage for demo mode
     for ev in IN_MEMORY_RISK_EVENTS:
         if ev.get("id") == event_id or ev.get("entity_id") == event_id:
-            ev["reviewed"] = review.reviewed
-            ev["review_outcome"] = review.review_outcome
-            updated = True
+            ev["reviewed"] = update.reviewed
+            ev["review_outcome"] = update.review_outcome
+
+    sb = get_supabase()
+    if not sb:
+        # Return mock success if Supabase not configured (demo mode)
+        return {"id": event_id, "reviewed": update.reviewed,
+                "review_outcome": update.review_outcome, "mock": True}
+    try:
+        result = sb.table("risk_events").update({
+            "reviewed": update.reviewed,
+            "review_outcome": update.review_outcome
+        }).eq("id", event_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+        return result.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/risk/events/{event_id}")
+async def get_event(event_id: str):
+    """Fetch a single risk event by ID. Used by /cases/[id] page."""
+    # Try in-memory first to support offline/demo mode out of the box
+    for ev in IN_MEMORY_RISK_EVENTS:
+        if ev.get("id") == event_id or ev.get("entity_id") == event_id:
+            return ev
             
-    # 2. Update Supabase if configured
-    if supabase_client:
-        try:
-            supabase_client.table("risk_events").update({
-                "reviewed": review.reviewed,
-                "review_outcome": review.review_outcome
-            }).eq("id", event_id).execute()
-            updated = True
-        except Exception as e:
-            try:
-                supabase_client.table("risk_events").update({
-                    "reviewed": review.reviewed,
-                    "review_outcome": review.review_outcome
-                }).eq("entity_id", event_id).execute()
-                updated = True
-            except Exception as ex:
-                print(f"Error updating Supabase: {ex}")
-            
-    if not updated:
-        raise HTTPException(status_code=404, detail="Risk event not found")
-        
-    return {"status": "success", "message": f"Risk event {event_id} updated successfully."}
+    sb = get_supabase()
+    if not sb:
+        raise HTTPException(status_code=503,
+            detail="Supabase not configured. Set SUPABASE_URL and SUPABASE_KEY in .env")
+    try:
+        result = sb.table("risk_events").select("*").eq("id", event_id).single().execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Event not found")
+        return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

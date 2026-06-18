@@ -15,11 +15,28 @@ import os
 import sys
 import random
 from datetime import datetime, timedelta
+from pathlib import Path
 from dotenv import load_dotenv
 from neo4j import GraphDatabase, exceptions
 
-# Load environment variables from .env file
-load_dotenv()
+def find_and_load_env():
+    # check current directory, parent, and grandparent
+    paths = [
+        Path.cwd(),
+        Path.cwd().parent,
+        Path.cwd().parent.parent
+    ]
+    for p in paths:
+        env_file = p / '.env'
+        if env_file.exists():
+            load_dotenv(dotenv_path=env_file)
+            print(f"Loaded .env from: {env_file.resolve()}")
+            return
+    # Fallback to standard dotenv loading
+    load_dotenv()
+
+# Load environment variables from .env file with auto-discovery
+find_and_load_env()
 
 NEO4J_URI = os.getenv("NEO4J_URI")
 NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")

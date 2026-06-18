@@ -11,11 +11,12 @@ interface EventCardProps {
 }
 
 export default function EventCard({ event, isSelected, onClick }: EventCardProps) {
-  const isHardBlock = event.action === "HARD_BLOCK" || event.risk_score >= 66;
-  const isStepUp = event.action === "STEP_UP_AUTH" || (event.risk_score >= 31 && event.risk_score <= 65);
+  const actionStr = typeof event.action === 'object' ? (event.action as any).action : event.action;
+  const isHardBlock = actionStr === "HARD_BLOCK" || event.risk_score >= 66;
+  const isStepUp = actionStr === "STEP_UP_AUTH" || (event.risk_score >= 31 && event.risk_score <= 65);
 
   // Map action action string
-  const actionLabel = event.action ? event.action.replace(/_/g, " ") : "SILENT PASS";
+  const actionLabel = actionStr ? actionStr.replace(/_/g, " ") : "SILENT PASS";
 
   // Action badge styles
   let badgeClass = "bg-soc-green/10 text-soc-green border-soc-green/30";

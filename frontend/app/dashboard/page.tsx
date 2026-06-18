@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { getHealth, getRiskEvents } from "../../lib/api";
-import { RiskEvent, HealthResponse } from "../../lib/types";
+import { api } from "../../lib/api";
+import { RiskEvent, HealthStatus } from "../../lib/types";
 import EventCard from "../../components/EventCard";
 import RadarChart from "../../components/RadarChart";
 import ShapBarChart from "../../components/ShapBarChart";
@@ -20,7 +20,7 @@ import {
 
 export default function Dashboard() {
   const [events, setEvents] = useState<RiskEvent[]>([]);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<RiskEvent | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
   const [isPolling, setIsPolling] = useState(true);
@@ -28,7 +28,7 @@ export default function Dashboard() {
   // Fetch data
   const fetchData = async () => {
     try {
-      const fetchedEvents = await getRiskEvents();
+      const fetchedEvents = await api.getEvents();
       setEvents(fetchedEvents);
 
       // Default selection to first event if not set or if current selection is not in list
@@ -40,7 +40,7 @@ export default function Dashboard() {
         });
       }
 
-      const fetchedHealth = await getHealth();
+      const fetchedHealth = await api.getHealth();
       setHealth(fetchedHealth);
     } catch (err: any) {
       console.error("Dashboard data fetch error:", err);
@@ -65,7 +65,10 @@ export default function Dashboard() {
 
   // Calculations for stats
   const totalEventsToday = events.length;
-  const activeFlagsCount = events.filter((e) => e.risk_score >= 66 || e.action === "HARD_BLOCK").length;
+  const activeFlagsCount = events.filter((e) => {
+    const actionStr = typeof e.action === 'object' ? (e.action as any).action : e.action;
+    return e.risk_score >= 66 || actionStr === "HARD_BLOCK";
+  }).length;
   const averageRiskScore = events.length > 0 
     ? events.reduce((sum, e) => sum + e.risk_score, 0) / events.length 
     : 0;

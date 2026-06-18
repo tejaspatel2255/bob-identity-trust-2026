@@ -1,7 +1,5 @@
-# Core Python package dependencies for Setu Graph Seeder & Backend
-neo4j>=5.14.0
-python-dotenv>=1.0.0
-faker>=19.13.0
-pytz>=2023.3
-httpx>=0.24.0
-supabase>=2.0.0
+# Root-level packages — for seed_graph.py and check_neo4j.py only
+# For the API server, use: pip install -r backend/requirements.txt
+neo4j>=5.0
+python-dotenv>=1.0
+faker>=20.0

@@ -1,17 +1,32 @@
 import os
+import time
+from pathlib import Path
 from typing import Generator
 from dotenv import load_dotenv
 from neo4j import GraphDatabase, Driver, Session
 
-# Load environment variables with override to prevent stale shell values from taking precedence
-if os.path.exists("backend/.env"):
-    load_dotenv("backend/.env", override=True)
-else:
-    load_dotenv(override=True)
+# .env auto-discovery (Fix 1)
+_env_path = Path(__file__).parent / ".env"
+if not _env_path.exists():
+    _env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=_env_path)
 
-NEO4J_URI = os.getenv("NEO4J_URI")
-NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+# Neo4j connection retry with exponential backoff (Fix 2)
+def get_driver():
+    uri = os.getenv("NEO4J_URI")
+    username = os.getenv("NEO4J_USERNAME")
+    password = os.getenv("NEO4J_PASSWORD")
+    for attempt in range(5):
+        try:
+            driver = GraphDatabase.driver(uri, auth=(username, password))
+            driver.verify_connectivity()
+            print(f"[Setu/Neo4j] Connected successfully on attempt {attempt + 1}")
+            return driver
+        except Exception as e:
+            wait = 2 ** attempt
+            print(f"[Setu/Neo4j] Attempt {attempt + 1} failed: {e}. Retrying in {wait}s...")
+            time.sleep(wait)
+    raise RuntimeError("[Setu/Neo4j] Could not connect after 5 attempts. Check NEO4J_URI and credentials.")
 
 class Neo4jDatabase:
     """
@@ -25,15 +40,7 @@ class Neo4jDatabase:
         Retrieves the initialized Neo4j driver singleton.
         """
         if cls._driver is None:
-            if not all([NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD]):
-                raise RuntimeError("Neo4j configuration environment variables are missing.")
-            
-            cls._driver = GraphDatabase.driver(
-                NEO4J_URI,
-                auth=(NEO4J_USERNAME, NEO4J_PASSWORD)
-            )
-            # Verify connectivity immediately on creation
-            cls._driver.verify_connectivity()
+            cls._driver = get_driver()
             # Seed demo personas if missing
             seed_demo_personas_if_missing(cls._driver)
             

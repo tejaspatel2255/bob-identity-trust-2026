@@ -129,6 +129,7 @@ class RiskScoreRequest(BaseModel):
 class RiskScoreResponse(BaseModel):
     entity_id: str
     entity_type: str
+    customer_id: Optional[str] = None
     risk_score: float
     shap_attributions: List[Dict[str, Any]]
     explanation: str
@@ -142,5 +143,10 @@ class RiskScoreResponse(BaseModel):
 class RiskEventReviewRequest(BaseModel):
     reviewed: bool = Field(..., description="True if the event has been reviewed by staff")
     review_outcome: str = Field(..., description="Outcome: FALSE_POSITIVE | CONFIRMED_FRAUD")
+
+
+class ReviewUpdate(BaseModel):
+    reviewed: bool
+    review_outcome: str  # "FALSE_POSITIVE" | "CONFIRMED_FRAUD" | "CONFIRMED_INSIDER"
 
 
