@@ -1,0 +1,30 @@
+# Environment variables (contains Neo4j credentials and API keys)
+.env
+backend/.env
+.env.local
+.env.*.local
+
+# Python virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache & compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS Generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
