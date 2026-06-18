@@ -10,9 +10,13 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from neo4j import Session
 
+# Supabase client import
+from supabase import create_client, Client
+
 # Local imports
 from backend.db import get_db_session, Neo4jDatabase
 from backend.haversine import calculate_haversine_distance
+from backend.explainer import mock_score_event, generate_explanation, get_friction_action
 from backend.models import (
     SessionEventRequest,
     SessionEventResponse,
@@ -25,7 +29,10 @@ from backend.models import (
     NodeModel,
     EdgeModel,
     AccessedAccountModel,
-    ViewedCustomerModel
+    ViewedCustomerModel,
+    RiskScoreRequest,
+    RiskScoreResponse,
+    RiskEventReviewRequest
 )
 
 # Initialize FastAPI App
@@ -43,6 +50,82 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize Supabase Client
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase_client: Optional[Client] = None
+
+if SUPABASE_URL and SUPABASE_KEY and SUPABASE_URL != "https://your-project.supabase.co":
+    try:
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("Supabase client initialized successfully.")
+    except Exception as e:
+        print(f"Warning: Failed to initialize Supabase client: {e}")
+
+# In-memory storage for local sandbox mode (when Supabase is not configured)
+IN_MEMORY_RISK_EVENTS: List[Dict[str, Any]] = [
+    {
+        "id": "CUST_PRIYA_SHARMA",
+        "entity_id": "CUST_PRIYA_SHARMA",
+        "entity_type": "CUSTOMER_SESSION",
+        "risk_score": 4.2,
+        "shap_attributions": [
+            {"feature": "behavioral_baseline_drift", "contribution": 0.04}
+        ],
+        "explanation": "CUSTOMER SESSION flagged at LOW risk. Authenticated on known mobile device. Operating during normal hours. Familiar IP geolocation.",
+        "provider_used": "llama-3.3-70b",
+        "model_id": "meta-llama/llama-3.3-70b-instruct:free",
+        "fallback_used": False,
+        "action": "SILENT_PASS",
+        "action_level": "LOW",
+        "timestamp": (datetime.now(pytz.timezone("Asia/Kolkata")) - timedelta(minutes=30)).isoformat(),
+        "reviewed": False,
+        "review_outcome": None
+    },
+    {
+        "id": "CUST_UNKNOWN_ATTACKER",
+        "entity_id": "CUST_UNKNOWN_ATTACKER",
+        "entity_type": "CUSTOMER_SESSION",
+        "risk_score": 92.5,
+        "shap_attributions": [
+            {"feature": "sim_swap_flag", "contribution": 0.38},
+            {"feature": "is_new_device", "contribution": 0.22},
+            {"feature": "geovelocity_jump", "contribution": 0.19},
+            {"feature": "is_first_time_beneficiary", "contribution": 0.135}
+        ],
+        "explanation": "CUSTOMER SESSION flagged at HIGH risk. SIM swap detected 90 minutes ago. Device identifier is new. Geovelocity jump of 1,200km in under 1 hour. Target transfer: ₹75,000 to first-time beneficiary.",
+        "provider_used": "llama-3.3-70b",
+        "model_id": "meta-llama/llama-3.3-70b-instruct:free",
+        "fallback_used": False,
+        "action": "HARD_BLOCK",
+        "action_level": "HIGH",
+        "timestamp": (datetime.now(pytz.timezone("Asia/Kolkata")) - timedelta(minutes=5)).isoformat(),
+        "reviewed": False,
+        "review_outcome": None
+    },
+    {
+        "id": "EMP_RAMESH_PATEL",
+        "entity_id": "EMP_RAMESH_PATEL",
+        "entity_type": "EMPLOYEE_ACCESS",
+        "risk_score": 86.4,
+        "shap_attributions": [
+            {"feature": "outside_hours_access", "contribution": 0.24},
+            {"feature": "bulk_account_access", "contribution": 0.28},
+            {"feature": "high_balance_accessed_count", "contribution": 0.22},
+            {"feature": "recovery_requests_followed", "contribution": 0.124}
+        ],
+        "explanation": "EMPLOYEE ACCESS flagged at HIGH risk. Branch officer logging in at 11:42 PM (outside shift hours). Accessed 3 HIGH-balance VIP customer accounts within 10 minutes. Account recovery requests followed.",
+        "provider_used": "gemini-flash",
+        "model_id": "google/gemini-flash-1.5",
+        "fallback_used": False,
+        "action": "HARD_BLOCK",
+        "action_level": "HIGH",
+        "timestamp": (datetime.now(pytz.timezone("Asia/Kolkata")) - timedelta(minutes=15)).isoformat(),
+        "reviewed": False,
+        "review_outcome": None
+    }
+]
 
 # ==========================================
 # EXCEPTION HANDLERS
@@ -384,13 +467,13 @@ def create_employee_access_event(
 
         // Create ACCESSED relationship
         MERGE (e)-[acc:ACCESSED]->(a)
-        SET acc.timestamp = $timestamp,
+        SET acc.timestamp = datetime($timestamp),
             acc.action_type = $action_type,
             acc.outside_hours = toBoolean($outside_hours)
 
         // Create VIEWED_KYC relationship
         MERGE (e)-[view:VIEWED_KYC]->(c)
-        SET view.timestamp = $timestamp
+        SET view.timestamp = datetime($timestamp)
     """
     db.run(
         write_query,
@@ -411,8 +494,8 @@ def create_employee_access_event(
         WHERE e.role IN ['BRANCH_OFFICER', 'KYC_ANALYST']
         
         MATCH (e)-[r:ACCESSED {outside_hours: true}]->(a:Account {balance_tier: 'HIGH'})
-        // ISO string lexicographical comparison for ISO-8601 strings
-        WHERE r.timestamp >= $hour_ago_str AND r.timestamp <= $current_time_str
+        // Cast parameters to datetime objects for Neo4j compatibility
+        WHERE r.timestamp >= datetime($hour_ago_str) AND r.timestamp <= datetime($current_time_str)
         
         WITH e, count(distinct a) AS high_balance_count
         WHERE high_balance_count >= 3
@@ -451,17 +534,17 @@ def get_customer_subgraph(
     Queries the database and returns all nodes and edges within 2 hops of the Customer.
     Used primarily for D3.js or react-force-graph visualizations.
     """
-    # Verify Customer exists first
-    check_query = "MATCH (c:Customer {id: $customer_id}) RETURN c.id"
+    # Verify node exists first
+    check_query = "MATCH (n) WHERE n.id = $customer_id OR n.fingerprint = $customer_id RETURN n LIMIT 1"
     if not db.run(check_query, {"customer_id": customer_id}).single():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Customer with ID '{customer_id}' not found."
+            detail=f"Entity with ID '{customer_id}' not found."
         )
 
     # Get nodes and relationships in 2 hops
     subgraph_query = """
-        MATCH (c:Customer {id: $customer_id})
+        MATCH (c) WHERE c.id = $customer_id OR c.fingerprint = $customer_id
         OPTIONAL MATCH path = (c)-[*1..2]-(n)
         WITH c, path
         UNWIND (case when path is null then [c] else nodes(path) end) AS node
@@ -517,6 +600,72 @@ def get_customer_subgraph(
 
 
 @app.get(
+    "/graph/all",
+    response_model=SubgraphResponse,
+    summary="Retrieve the entire graph database for visualization"
+)
+def get_all_graph(db: Session = Depends(get_db_session)):
+    """
+    Returns all nodes and relationships in the database up to a limit of 1000 nodes
+    for a global force-graph visual.
+    """
+    query = """
+        MATCH (n)
+        WITH n LIMIT 800
+        OPTIONAL MATCH (n)-[r]->(m)
+        RETURN collect(distinct n) AS nodes, collect(distinct r) AS rels
+    """
+    record = db.run(query).single()
+
+    nodes_out = []
+    edges_out = []
+
+    if record:
+        for node in record["nodes"]:
+            label = list(node.labels)[0] if node.labels else "Unknown"
+            node_id = node.get("fingerprint") if label == "Device" else node.get("id")
+            
+            properties = {k: serialize_neo4j_value(v) for k, v in node.items()}
+            
+            nodes_out.append(
+                NodeModel(
+                    id=str(node_id),
+                    type=label,
+                    properties=properties
+                )
+            )
+
+        for rel in record["rels"]:
+            if not rel:
+                continue
+            start_node = rel.start_node
+            end_node = rel.end_node
+            
+            start_label = list(start_node.labels)[0] if start_node.labels else "Unknown"
+            end_label = list(end_node.labels)[0] if end_node.labels else "Unknown"
+            
+            source_id = start_node.get("fingerprint") if start_label == "Device" else start_node.get("id")
+            target_id = end_node.get("fingerprint") if end_label == "Device" else end_node.get("id")
+            
+            properties = {k: serialize_neo4j_value(v) for k, v in rel.items()}
+
+            edges_out.append(
+                EdgeModel(
+                    source=str(source_id),
+                    target=str(target_id),
+                    type=rel.type,
+                    properties=properties
+                )
+            )
+
+    return {
+        "nodes": nodes_out,
+        "edges": edges_out
+    }
+
+
+
+@app.get(
     "/graph/employee/{employee_id}",
     response_model=EmployeeActivityResponse,
     summary="Get employee activities in the last 24 hours"
@@ -546,10 +695,10 @@ def get_employee_activity(
         MATCH (e:Employee {id: $employee_id})
         
         OPTIONAL MATCH (e)-[acc:ACCESSED]->(a:Account)
-        WHERE acc.timestamp >= $cutoff_time
+        WHERE acc.timestamp >= datetime($cutoff_time)
         
         OPTIONAL MATCH (e)-[view:VIEWED_KYC]->(c:Customer)
-        WHERE view.timestamp >= $cutoff_time
+        WHERE view.timestamp >= datetime($cutoff_time)
         
         WITH e, 
              case when a is not null then {
@@ -636,7 +785,7 @@ def health_check(
         flagged_res = db.run(
             """
             MATCH (s:Session {label: 'FRAUD'})
-            WHERE s.timestamp >= $cutoff_time
+            WHERE s.timestamp >= datetime($cutoff_time)
             RETURN count(s) AS count
             """,
             {"cutoff_time": cutoff_time_str}
@@ -665,3 +814,149 @@ def shutdown_event():
     """
     Neo4jDatabase.close()
     print("Neo4j connection closed.")
+
+
+@app.post(
+    "/risk/score",
+    response_model=RiskScoreResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Compute risk score and generate plain-language explanation"
+)
+async def get_risk_score(event: RiskScoreRequest):
+    """
+    Computes GNN risk score and attributions, queries OpenRouter models sequentially
+    to explain the risk, decides policy friction action, logs it to Supabase, and returns the result.
+    """
+    # 1. Compute mock score and attributions
+    risk_score, shap_attrs = mock_score_event(event.event_data)
+
+    # 2. Generate LLM explanation using OpenRouter fallback chain
+    explanation_res = await generate_explanation(risk_score, shap_attrs, event.entity_type)
+
+    # 3. Determine friction action
+    action_dict = get_friction_action(risk_score)
+
+    timestamp_str = datetime.now(pytz.timezone("Asia/Kolkata")).isoformat()
+    event_uuid = str(uuid.uuid4())
+
+    # Create event dictionary for local in-memory storage
+    local_row = {
+        "id": event_uuid,
+        "entity_id": event.entity_id,
+        "entity_type": event.entity_type,
+        "risk_score": risk_score,
+        "shap_attributions": shap_attrs,
+        "explanation": explanation_res["explanation"],
+        "provider_used": explanation_res["provider_used"],
+        "model_id": explanation_res["model_id"],
+        "fallback_used": explanation_res["fallback_used"],
+        "action": action_dict["action"],
+        "action_level": action_dict["level"],
+        "timestamp": timestamp_str,
+        "reviewed": False,
+        "review_outcome": None
+    }
+    
+    # Save to local in-memory feed
+    IN_MEMORY_RISK_EVENTS.append(local_row)
+
+    # 4. Insert records into Supabase if client is initialized
+    if supabase_client:
+        try:
+            supabase_row = {
+                "id": event_uuid,
+                "entity_id": event.entity_id,
+                "entity_type": event.entity_type,
+                "risk_score": risk_score,
+                "shap_attributions": shap_attrs,
+                "explanation": explanation_res["explanation"],
+                "provider_used": explanation_res["provider_used"],
+                "model_id": explanation_res["model_id"],
+                "fallback_used": explanation_res["fallback_used"],
+                "action": action_dict["action"],
+                "action_level": action_dict["level"],
+                "timestamp": timestamp_str,
+                "reviewed": False,
+                "review_outcome": None
+            }
+            supabase_client.table("risk_events").insert(supabase_row).execute()
+        except Exception as e:
+            print(f"Error logging risk event to Supabase: {e}")
+    else:
+        print("Warning: Supabase client not initialized. Skipping DB insert.")
+
+    return {
+        "entity_id": event.entity_id,
+        "entity_type": event.entity_type,
+        "risk_score": risk_score,
+        "shap_attributions": shap_attrs,
+        "explanation": explanation_res["explanation"],
+        "provider_used": explanation_res["provider_used"],
+        "fallback_used": explanation_res["fallback_used"],
+        "model_id": explanation_res["model_id"],
+        "action": action_dict,
+        "timestamp": timestamp_str
+    }
+
+
+@app.get(
+    "/risk/events",
+    summary="Get all logged risk events"
+)
+def get_risk_events():
+    """
+    Returns all logged risk events. If Supabase is connected, queries Supabase.
+    Otherwise, returns the in-memory array.
+    """
+    if supabase_client:
+        try:
+            res = supabase_client.table("risk_events").select("*").order("timestamp", desc=True).execute()
+            if res.data:
+                return res.data
+        except Exception as e:
+            print(f"Error reading from Supabase, falling back to in-memory: {e}")
+    
+    # Return in-memory events sorted by timestamp descending
+    return sorted(IN_MEMORY_RISK_EVENTS, key=lambda x: x["timestamp"], reverse=True)
+
+
+@app.patch(
+    "/risk/events/{event_id}",
+    summary="Update review status of a risk event"
+)
+def review_risk_event(event_id: str, review: RiskEventReviewRequest):
+    """
+    Updates the reviewed status and review_outcome of a risk event by ID or entity_id.
+    Works for both Supabase and in-memory storage.
+    """
+    updated = False
+    
+    # 1. Update in-memory storage
+    for ev in IN_MEMORY_RISK_EVENTS:
+        if ev.get("id") == event_id or ev.get("entity_id") == event_id:
+            ev["reviewed"] = review.reviewed
+            ev["review_outcome"] = review.review_outcome
+            updated = True
+            
+    # 2. Update Supabase if configured
+    if supabase_client:
+        try:
+            supabase_client.table("risk_events").update({
+                "reviewed": review.reviewed,
+                "review_outcome": review.review_outcome
+            }).eq("id", event_id).execute()
+            updated = True
+        except Exception as e:
+            try:
+                supabase_client.table("risk_events").update({
+                    "reviewed": review.reviewed,
+                    "review_outcome": review.review_outcome
+                }).eq("entity_id", event_id).execute()
+                updated = True
+            except Exception as ex:
+                print(f"Error updating Supabase: {ex}")
+            
+    if not updated:
+        raise HTTPException(status_code=404, detail="Risk event not found")
+        
+    return {"status": "success", "message": f"Risk event {event_id} updated successfully."}

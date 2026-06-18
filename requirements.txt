@@ -1,5 +1,7 @@
-# Python package dependencies for Setu Graph Seeder
+# Core Python package dependencies for Setu Graph Seeder & Backend
 neo4j>=5.14.0
 python-dotenv>=1.0.0
 faker>=19.13.0
-# Note: 'random' is a standard Python library and does not require pip installation.
+pytz>=2023.3
+httpx>=0.24.0
+supabase>=2.0.0

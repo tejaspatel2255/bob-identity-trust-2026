@@ -114,3 +114,33 @@ class HealthResponse(BaseModel):
     total_edges: int
     flagged_last_24h: int
     model_version: str
+
+
+# ==========================================
+# RISK EXPLAINER MODELS
+# ==========================================
+
+class RiskScoreRequest(BaseModel):
+    entity_type: str = Field(..., description="CUSTOMER_SESSION | EMPLOYEE_ACCESS")
+    entity_id: str = Field(..., description="ID of the session or employee being evaluated")
+    event_data: Dict[str, Any] = Field(..., description="Raw features matching mock_score_event keys")
+
+
+class RiskScoreResponse(BaseModel):
+    entity_id: str
+    entity_type: str
+    risk_score: float
+    shap_attributions: List[Dict[str, Any]]
+    explanation: str
+    provider_used: str
+    fallback_used: bool
+    model_id: str
+    action: Dict[str, Any]
+    timestamp: str
+
+
+class RiskEventReviewRequest(BaseModel):
+    reviewed: bool = Field(..., description="True if the event has been reviewed by staff")
+    review_outcome: str = Field(..., description="Outcome: FALSE_POSITIVE | CONFIRMED_FRAUD")
+
+
