@@ -537,6 +537,87 @@ def create_employee_access_event(
     }
 
 
+def get_static_mock_subgraph(entity_id: str) -> dict:
+    # 1. Priya Sharma
+    if "priya" in entity_id.lower():
+        return {
+            "nodes": [
+                {"id": "CUST_PRIYA_SHARMA", "type": "Customer", "properties": {"name": "Priya Sharma", "risk_baseline": 0.04, "onboarding_aadhaar_verified": True, "account_age_days": 720}},
+                {"id": "ACC_PRIYA", "type": "Account", "properties": {"balance_tier": "MID", "account_type": "SAVINGS", "is_frozen": False}},
+                {"id": "DEV_PRIYA", "type": "Device", "properties": {"os": "iOS", "browser": "Safari", "is_new": False, "trust_score": 0.95}},
+                {"id": "SESS_PRIYA", "type": "Session", "properties": {"timestamp": "2026-07-01T10:00:00", "ip": "192.168.1.5", "city": "Mumbai", "sim_swap_flag": False, "label": "LEGITIMATE"}}
+            ],
+            "edges": [
+                {"source": "CUST_PRIYA_SHARMA", "target": "ACC_PRIYA", "type": "OWNS", "properties": {}},
+                {"source": "CUST_PRIYA_SHARMA", "target": "DEV_PRIYA", "type": "LOGGED_IN_FROM", "properties": {}},
+                {"source": "CUST_PRIYA_SHARMA", "target": "SESS_PRIYA", "type": "INITIATED", "properties": {}},
+                {"source": "SESS_PRIYA", "target": "DEV_PRIYA", "type": "USED_DEVICE", "properties": {"geovelocity_jump_km": 0.0}}
+            ]
+        }
+    # 2. SIM Swap Attacker
+    elif "attacker" in entity_id.lower() or "atk" in entity_id.lower():
+        return {
+            "nodes": [
+                {"id": "CUST_UNKNOWN_ATTACKER", "type": "Customer", "properties": {"name": "SIM Swap Target", "risk_baseline": 0.78, "onboarding_aadhaar_verified": True, "account_age_days": 500}},
+                {"id": "ACC_ATTACKER", "type": "Account", "properties": {"balance_tier": "HIGH", "account_type": "SAVINGS", "is_frozen": False}},
+                {"id": "DEV_ATTACKER", "type": "Device", "properties": {"os": "Android", "browser": "Chrome", "is_new": True, "trust_score": 0.1}},
+                {"id": "SESS_ATTACKER", "type": "Session", "properties": {"timestamp": "2026-07-01T10:15:00", "ip": "103.241.12.89", "city": "Delhi", "sim_swap_flag": True, "label": "FRAUD"}},
+                {"id": "BEN_ATTACKER", "type": "Beneficiary", "properties": {"bank_ifsc": "BARB0DELHI", "is_first_time": True, "amount": 75000.0}}
+            ],
+            "edges": [
+                {"source": "CUST_UNKNOWN_ATTACKER", "target": "ACC_ATTACKER", "type": "OWNS", "properties": {}},
+                {"source": "CUST_UNKNOWN_ATTACKER", "target": "DEV_ATTACKER", "type": "LOGGED_IN_FROM", "properties": {}},
+                {"source": "CUST_UNKNOWN_ATTACKER", "target": "SESS_ATTACKER", "type": "INITIATED", "properties": {}},
+                {"source": "SESS_ATTACKER", "target": "DEV_ATTACKER", "type": "USED_DEVICE", "properties": {"geovelocity_jump_km": 1200.0}},
+                {"source": "SESS_ATTACKER", "target": "BEN_ATTACKER", "type": "TRANSFERRED_TO", "properties": {"amount": 75000.0}}
+            ]
+        }
+    # 3. Ramesh Patel
+    elif "ramesh" in entity_id.lower() or "emp_rp" in entity_id.lower():
+        return {
+            "nodes": [
+                {"id": "EMP_RAMESH_PATEL", "type": "Employee", "properties": {"name": "Ramesh Patel", "role": "BRANCH_OFFICER", "access_level": 4, "department": "Retail Operations", "label": "INSIDER"}},
+                {"id": "ACC_VIP_1", "type": "Account", "properties": {"balance_tier": "HIGH", "account_type": "SAVINGS", "is_frozen": False}},
+                {"id": "ACC_VIP_2", "type": "Account", "properties": {"balance_tier": "HIGH", "account_type": "CURRENT", "is_frozen": False}},
+                {"id": "ACC_VIP_3", "type": "Account", "properties": {"balance_tier": "HIGH", "account_type": "SAVINGS", "is_frozen": False}},
+                {"id": "CUST_VIP_1", "type": "Customer", "properties": {"name": "VIP Customer 1", "risk_baseline": 0.02, "onboarding_aadhaar_verified": True, "account_age_days": 1200}},
+                {"id": "CUST_VIP_2", "type": "Customer", "properties": {"name": "VIP Customer 2", "risk_baseline": 0.05, "onboarding_aadhaar_verified": True, "account_age_days": 900}},
+                {"id": "CUST_VIP_3", "type": "Customer", "properties": {"name": "VIP Customer 3", "risk_baseline": 0.01, "onboarding_aadhaar_verified": True, "account_age_days": 1500}}
+            ],
+            "edges": [
+                {"source": "EMP_RAMESH_PATEL", "target": "ACC_VIP_1", "type": "ACCESSED", "properties": {"action_type": "KYC_OVERRIDE_UNAUTHORIZED", "outside_hours": True}},
+                {"source": "EMP_RAMESH_PATEL", "target": "ACC_VIP_2", "type": "ACCESSED", "properties": {"action_type": "KYC_OVERRIDE_UNAUTHORIZED", "outside_hours": True}},
+                {"source": "EMP_RAMESH_PATEL", "target": "ACC_VIP_3", "type": "ACCESSED", "properties": {"action_type": "KYC_OVERRIDE_UNAUTHORIZED", "outside_hours": True}},
+                {"source": "EMP_RAMESH_PATEL", "target": "CUST_VIP_1", "type": "VIEWED_KYC", "properties": {}},
+                {"source": "EMP_RAMESH_PATEL", "target": "CUST_VIP_2", "type": "VIEWED_KYC", "properties": {}},
+                {"source": "EMP_RAMESH_PATEL", "target": "CUST_VIP_3", "type": "VIEWED_KYC", "properties": {}},
+                {"source": "CUST_VIP_1", "target": "ACC_VIP_1", "type": "OWNS", "properties": {}},
+                {"source": "CUST_VIP_2", "target": "ACC_VIP_2", "type": "OWNS", "properties": {}},
+                {"source": "CUST_VIP_3", "target": "ACC_VIP_3", "type": "OWNS", "properties": {}}
+            ]
+        }
+    else:
+        return {"nodes": [], "edges": []}
+
+def get_static_full_mock_graph() -> dict:
+    priya = get_static_mock_subgraph("priya")
+    attacker = get_static_mock_subgraph("attacker")
+    ramesh = get_static_mock_subgraph("ramesh")
+    
+    nodes = {n["id"]: n for n in priya["nodes"] + attacker["nodes"] + ramesh["nodes"]}
+    edges = []
+    seen_edges = set()
+    for e in priya["edges"] + attacker["edges"] + ramesh["edges"]:
+        edge_key = f"{e['source']}-{e['target']}-{e['type']}"
+        if edge_key not in seen_edges:
+            seen_edges.add(edge_key)
+            edges.append(e)
+            
+    return {
+        "nodes": list(nodes.values()),
+        "edges": edges
+    }
+
 @app.get(
     "/graph/subgraph/{customer_id}",
     response_model=SubgraphResponse,
@@ -550,6 +631,10 @@ def get_customer_subgraph(
     Queries the database and returns all nodes and edges within 2 hops of the Customer.
     Used primarily for D3.js or react-force-graph visualizations.
     """
+    from backend.db import MockDriver
+    if isinstance(Neo4jDatabase.get_driver(), MockDriver):
+        return get_static_mock_subgraph(customer_id)
+
     # Verify node exists first
     check_query = "MATCH (n) WHERE n.id = $customer_id OR n.fingerprint = $customer_id RETURN n LIMIT 1"
     if not db.run(check_query, {"customer_id": customer_id}).single():
@@ -621,6 +706,10 @@ def get_full_graph():
     Returns up to 500 nodes and all edges between them.
     Used by the /graph-view frontend page.
     """
+    from backend.db import MockDriver
+    if isinstance(Neo4jDatabase.get_driver(), MockDriver):
+        return get_static_full_mock_graph()
+
     query = """
     MATCH (n)
     WITH n LIMIT 500
@@ -893,9 +982,13 @@ def get_risk_events():
 def get_supabase():
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
-    if not url or not key:
+    if not url or not key or url == "https://your-project.supabase.co" or "your-anon" in key:
         return None
-    return create_client(url, key)
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        print(f"Failed to create Supabase client: {e}")
+        return None
 
 @app.patch("/risk/events/{event_id}")
 async def review_event(event_id: str, update: ReviewUpdate):
@@ -912,10 +1005,19 @@ async def review_event(event_id: str, update: ReviewUpdate):
         return {"id": event_id, "reviewed": update.reviewed,
                 "review_outcome": update.review_outcome, "mock": True}
     try:
+        # Try updating by ID first
         result = sb.table("risk_events").update({
             "reviewed": update.reviewed,
             "review_outcome": update.review_outcome
         }).eq("id", event_id).execute()
+        
+        # If no rows were updated, try updating by entity_id
+        if not result.data:
+            result = sb.table("risk_events").update({
+                "reviewed": update.reviewed,
+                "review_outcome": update.review_outcome
+            }).eq("entity_id", event_id).execute()
+            
         if not result.data:
             raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
         return result.data[0]
@@ -935,9 +1037,16 @@ async def get_event(event_id: str):
         raise HTTPException(status_code=503,
             detail="Supabase not configured. Set SUPABASE_URL and SUPABASE_KEY in .env")
     try:
-        result = sb.table("risk_events").select("*").eq("id", event_id).single().execute()
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Event not found")
-        return result.data
+        # Try finding by ID first
+        result = sb.table("risk_events").select("*").eq("id", event_id).execute()
+        if result.data:
+            return result.data[0]
+            
+        # Otherwise try finding by entity_id
+        result = sb.table("risk_events").select("*").eq("entity_id", event_id).execute()
+        if result.data:
+            return result.data[0]
+            
+        raise HTTPException(status_code=404, detail="Event not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

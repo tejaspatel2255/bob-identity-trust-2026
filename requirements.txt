@@ -1,5 +1,5 @@
-# Root-level packages — for seed_graph.py and check_neo4j.py only
-# For the API server, use: pip install -r backend/requirements.txt
+# Root packages — for seed_graph.py and check_neo4j.py only
+# For the API server use: pip install -r backend/requirements.txt
 neo4j>=5.0
 python-dotenv>=1.0
 faker>=20.0
