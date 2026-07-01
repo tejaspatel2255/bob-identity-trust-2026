@@ -99,8 +99,9 @@ export default function CaseDetail() {
 
   // Action download handler
   const downloadCaseReport = () => {
-    const actionStr = typeof event.action === 'object' ? event.action.action : event.action;
-    const actionLevelStr = typeof event.action === 'object' ? event.action.level : (event as any).action_level;
+    if (!event) return;
+    const actionStr = typeof event.action === 'object' ? (event.action as any).action : event.action;
+    const actionLevelStr = typeof event.action === 'object' ? (event.action as any).level : (event as any).action_level;
     const reportText = `
 ============================================================
            SETU IDENTITY SECURITY SYSTEM - CASE FILE
@@ -271,7 +272,7 @@ Generated on ${new Date().toLocaleString("en-IN")}
                   ? "bg-soc-amber/10 text-soc-amber border-soc-amber/30" 
                   : "bg-soc-green/10 text-soc-green border-soc-green/30"
               }`}>
-                {event.action ? (typeof event.action === 'object' ? (event.action as any).action.replace(/_/g, " ") : event.action.replace(/_/g, " ")) : "SILENT_PASS"}
+                {event.action ? (typeof event.action === 'object' ? (event.action as any).action.replace(/_/g, " ") : (event.action as any).replace(/_/g, " ")) : "SILENT_PASS"}
               </span>
             </div>
           </div>

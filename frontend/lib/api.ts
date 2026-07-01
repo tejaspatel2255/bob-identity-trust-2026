@@ -1,3 +1,5 @@
+import { RiskEvent, GraphData, HealthStatus } from './types';
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -17,25 +19,25 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   scoreEvent: (body: object) =>
-    apiFetch('/risk/score', { method: 'POST', body: JSON.stringify(body) }),
+    apiFetch<any>('/risk/score', { method: 'POST', body: JSON.stringify(body) }),
 
   getSubgraph: (customerId: string) =>
-    apiFetch(`/graph/subgraph/${customerId}`),
+    apiFetch<GraphData>(`/graph/subgraph/${customerId}`),
 
   getFullGraph: () =>
-    apiFetch('/graph/all'),
+    apiFetch<GraphData>('/graph/all'),
 
   getHealth: () =>
-    apiFetch('/health'),
+    apiFetch<HealthStatus>('/health'),
 
   getEvents: () =>
-    apiFetch<any[]>('/risk/events'),
+    apiFetch<RiskEvent[]>('/risk/events'),
 
   getEvent: (eventId: string) =>
-    apiFetch(`/risk/events/${eventId}`),
+    apiFetch<RiskEvent>(`/risk/events/${eventId}`),
 
   reviewEvent: (eventId: string, reviewed: boolean, review_outcome: string) =>
-    apiFetch(`/risk/events/${eventId}`, {
+    apiFetch<any>(`/risk/events/${eventId}`, {
       method: 'PATCH',
       body: JSON.stringify({ reviewed, review_outcome }),
     }),

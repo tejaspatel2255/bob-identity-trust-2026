@@ -235,7 +235,7 @@ export default function LiveFeed() {
                       {/* Action Pill */}
                       <td className="p-4 font-semibold tracking-wide">
                         <span className={actionClass}>
-                          {ev.action ? (typeof ev.action === 'object' ? (ev.action as any).action.replace(/_/g, " ") : ev.action.replace(/_/g, " ")) : "SILENT_PASS"}
+                          {ev.action ? (typeof ev.action === 'object' ? (ev.action as any).action.replace(/_/g, " ") : (ev.action as any).replace(/_/g, " ")) : "SILENT_PASS"}
                         </span>
                       </td>
 

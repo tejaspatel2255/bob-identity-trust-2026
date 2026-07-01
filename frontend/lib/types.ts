@@ -28,11 +28,12 @@ export interface RiskEvent {
   provider_used: string;
   model_id: string;
   fallback_used: boolean;
-  action: FrictionAction;
+  action: FrictionAction | string;
   timestamp: string;
   reviewed: boolean;
   review_outcome: string | null;
   confidence?: Confidence;
+  event_data?: Record<string, any>;
 }
 
 export interface GraphNode {
