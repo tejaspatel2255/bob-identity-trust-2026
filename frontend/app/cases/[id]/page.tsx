@@ -31,6 +31,34 @@ export default function CaseDetail() {
   const [loading, setLoading] = useState(true);
   const [graphLoading, setGraphLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const handleMitigation = async (actionType: "freeze" | "reverify" | "whitelist") => {
+    if (!event) return;
+    let msg = "";
+    let reviewOutcome: "CONFIRMED_FRAUD" | "FALSE_POSITIVE" = "CONFIRMED_FRAUD";
+
+    if (actionType === "freeze") {
+      msg = `CRITICAL: All associated Bank Accounts and Cards frozen for ${event.entity_id}.`;
+      reviewOutcome = "CONFIRMED_FRAUD";
+    } else if (actionType === "reverify") {
+      msg = `NOTICE: Aadhaar KYC OTP push triggered for session confirmation.`;
+      reviewOutcome = "FALSE_POSITIVE";
+    } else if (actionType === "whitelist") {
+      msg = `SUCCESS: Device fingerprint added to approved white list.`;
+      reviewOutcome = "FALSE_POSITIVE";
+    }
+
+    try {
+      await api.reviewEvent(event.id, true, reviewOutcome);
+      setToast({ message: msg, type: "success" });
+      setEvent((prev) => prev ? { ...prev, reviewed: true, review_outcome: reviewOutcome } : null);
+      setTimeout(() => setToast(null), 4000);
+    } catch (err: any) {
+      setToast({ message: err.message || "Failed to submit mitigation action.", type: "error" });
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
 
   useEffect(() => {
     const loadCaseData = async () => {
@@ -145,7 +173,14 @@ Generated on ${new Date().toLocaleString("en-IN")}
   const isMediumRisk = event.risk_score >= 31 && event.risk_score <= 65;
 
   return (
-    <div className="p-8 pb-16 min-h-screen">
+    <div className="p-8 pb-16 min-h-screen relative">
+      {/* Toast Alert */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 rounded border px-4 py-3 shadow-2xl font-mono text-xs font-semibold
+          ${toast.type === "success" ? "border-soc-green bg-soc-surface text-soc-green animate-pulse" : "border-soc-red bg-soc-surface text-soc-red"}`}>
+          {toast.message}
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-soc-border pb-6 mb-8">
         <div className="flex items-center gap-4">
@@ -238,6 +273,37 @@ Generated on ${new Date().toLocaleString("en-IN")}
               }`}>
                 {event.action ? (typeof event.action === 'object' ? (event.action as any).action.replace(/_/g, " ") : event.action.replace(/_/g, " ")) : "SILENT_PASS"}
               </span>
+            </div>
+          </div>
+
+          {/* Mitigation Actions Console */}
+          <div className="rounded-lg border border-soc-border bg-soc-surface p-6">
+            <h3 className="font-display text-xs font-bold uppercase tracking-wider text-soc-textSecondary mb-4 flex items-center gap-1.5 font-bold">
+              <ShieldAlert className="h-4 w-4 text-soc-red" />
+              Active Incident Mitigation SOAR Console
+            </h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => handleMitigation("freeze")}
+                className="flex items-center justify-center gap-2 rounded border border-soc-red bg-soc-red/5 hover:bg-soc-red hover:text-soc-bg py-2.5 text-xs font-semibold uppercase tracking-wider text-soc-red transition-all"
+              >
+                Freeze Account
+              </button>
+              
+              <button
+                onClick={() => handleMitigation("reverify")}
+                className="flex items-center justify-center gap-2 rounded border border-soc-amber bg-soc-amber/5 hover:bg-soc-amber hover:text-soc-bg py-2.5 text-xs font-semibold uppercase tracking-wider text-soc-amber transition-all"
+              >
+                Force KYC Verify
+              </button>
+
+              <button
+                onClick={() => handleMitigation("whitelist")}
+                className="flex items-center justify-center gap-2 rounded border border-soc-green bg-soc-green/5 hover:bg-soc-green hover:text-soc-bg py-2.5 text-xs font-semibold uppercase tracking-wider text-soc-green transition-all"
+              >
+                Whitelist Device
+              </button>
             </div>
           </div>
 

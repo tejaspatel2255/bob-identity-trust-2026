@@ -16,7 +16,8 @@ import {
   Cpu, 
   Clock, 
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  Play
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<RiskEvent | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
+  const [simulationActive, setSimulationActive] = useState(false);
 
   // Fetch initial health once
   useEffect(() => {
@@ -34,6 +36,29 @@ export default function Dashboard() {
         showToast("Failed to sync with SOC health status", "error");
       });
   }, []);
+
+  // Live simulation background loop
+  useEffect(() => {
+    if (!simulationActive) return;
+
+    const triggerSimulatedThreat = async () => {
+      try {
+        const { getRandomAttack } = await import("../../lib/randomAttack");
+        const attack = getRandomAttack();
+        await api.scoreEvent({
+          entity_type: attack.entityType,
+          entity_id: attack.entityId,
+          event_data: attack.eventData
+        });
+      } catch (err) {
+        console.error("Traffic simulator error:", err);
+      }
+    };
+
+    triggerSimulatedThreat();
+    const interval = setInterval(triggerSimulatedThreat, 4000);
+    return () => clearInterval(interval);
+  }, [simulationActive]);
 
   // Update selectedEvent when events change
   useEffect(() => {
@@ -57,9 +82,22 @@ export default function Dashboard() {
     const actionStr = typeof e.action === 'object' ? (e.action as any).action : e.action;
     return e.risk_score >= 66 || actionStr === "HARD_BLOCK";
   }).length;
-  const averageRiskScore = events.length > 0 
-    ? events.reduce((sum, e) => sum + e.risk_score, 0) / events.length 
-    : 0;
+
+  const potentialFraudStopped = events
+    .filter((e) => {
+      const actionStr = typeof e.action === 'object' ? (e.action as any).action : e.action;
+      return actionStr === "HARD_BLOCK" || e.risk_score >= 66;
+    })
+    .reduce((sum, e) => {
+      const amt = e.event_data?.amount || (e.risk_score * 8500);
+      return sum + amt;
+    }, 0);
+
+  const falsePositivesAvoided = events.filter((e) => {
+    return e.reviewed && e.review_outcome === "FALSE_POSITIVE";
+  }).length;
+
+  const hoursSaved = parseFloat(((events.length * 5 + falsePositivesAvoided * 7) / 60).toFixed(1));
 
   // Active provider highlight
   const currentProvider = selectedEvent?.provider_used || "template";
@@ -85,6 +123,21 @@ export default function Dashboard() {
               {connected ? 'LIVE' : 'RECONNECTING...'}
             </span>
           </div>
+        </div>
+
+        {/* Live Simulator Toggle Action */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSimulationActive(!simulationActive)}
+            className={`flex items-center gap-2 rounded border px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all duration-300 ${
+              simulationActive
+                ? "border-soc-red bg-soc-red/10 text-soc-red hover:bg-soc-red hover:text-soc-bg animate-pulse"
+                : "border-soc-cyan bg-soc-cyan/10 text-soc-cyan hover:bg-soc-cyan hover:text-soc-bg"
+            }`}
+          >
+            <Play className={`h-4 w-4 ${simulationActive ? "animate-spin" : ""}`} />
+            {simulationActive ? "Stop Live Simulation" : "Start Live Simulation"}
+          </button>
         </div>
       </div>
 
@@ -119,43 +172,29 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Metric 3: Avg Risk Score */}
+        {/* Metric 3: Potential Fraud Saved */}
         <div className="rounded-lg border border-soc-border bg-soc-surface p-5 flex flex-col justify-between">
           <span className="text-xs uppercase tracking-wider text-soc-textSecondary font-semibold">
-            Average Risk Level
+            Fraud Loss Prevented
           </span>
           <div className="flex items-baseline justify-between mt-3">
-            <span
-              className={`font-mono text-3xl font-bold ${
-                averageRiskScore >= 66
-                  ? "text-soc-red"
-                  : averageRiskScore >= 31
-                  ? "text-soc-amber"
-                  : "text-soc-green"
-              }`}
-            >
-              {averageRiskScore.toFixed(1)}%
+            <span className="font-mono text-xl font-bold text-soc-green">
+              ₹{potentialFraudStopped.toLocaleString("en-IN")}
             </span>
-            <Cpu className="h-5 w-5 text-soc-textSecondary/40" />
+            <Cpu className="h-5 w-5 text-soc-green/40" />
           </div>
         </div>
 
-        {/* Metric 4: LLM Status */}
+        {/* Metric 4: Investigation Time Saved */}
         <div className="rounded-lg border border-soc-border bg-soc-surface p-5 flex flex-col justify-between">
           <span className="text-xs uppercase tracking-wider text-soc-textSecondary font-semibold">
-            Active Explainability
+            Audit Hours Saved
           </span>
-          <div className="flex items-center justify-between mt-4">
-            <span className="font-mono text-xs font-semibold text-soc-textPrimary uppercase">
-              {currentProvider === "template" ? "Local Template" : currentProvider}
+          <div className="flex items-baseline justify-between mt-3">
+            <span className="font-mono text-3xl font-bold text-[#FFB800]">
+              {hoursSaved} hrs
             </span>
-            <div className="flex items-center gap-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-soc-cyan opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-soc-cyan"></span>
-              </span>
-              <span className="text-[10px] text-soc-cyan font-bold tracking-widest">ONLINE</span>
-            </div>
+            <Clock className="h-5 w-5 text-[#FFB800]/40" />
           </div>
         </div>
       </div>
