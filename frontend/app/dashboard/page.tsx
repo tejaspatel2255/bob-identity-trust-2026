@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "../../lib/api";
 import { RiskEvent, HealthStatus } from "../../lib/types";
+import { useEventStream } from "../../lib/useEventStream";
 import EventCard from "../../components/EventCard";
 import RadarChart from "../../components/RadarChart";
 import ShapBarChart from "../../components/ShapBarChart";
@@ -19,49 +20,36 @@ import {
 } from "lucide-react";
 
 export default function Dashboard() {
-  const [events, setEvents] = useState<RiskEvent[]>([]);
+  const { events, connected } = useEventStream(50);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<RiskEvent | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "error" | "info" } | null>(null);
-  const [isPolling, setIsPolling] = useState(true);
 
-  // Fetch data
-  const fetchData = async () => {
-    try {
-      const fetchedEvents = await api.getEvents();
-      setEvents(fetchedEvents);
+  // Fetch initial health once
+  useEffect(() => {
+    api.getHealth()
+      .then(setHealth)
+      .catch((err) => {
+        console.error("Failed to fetch health", err);
+        showToast("Failed to sync with SOC health status", "error");
+      });
+  }, []);
 
-      // Default selection to first event if not set or if current selection is not in list
-      if (fetchedEvents.length > 0) {
-        setSelectedEvent((prev) => {
-          if (!prev) return fetchedEvents[0];
-          const exists = fetchedEvents.find((e) => e.id === prev.id);
-          return exists || fetchedEvents[0];
-        });
-      }
-
-      const fetchedHealth = await api.getHealth();
-      setHealth(fetchedHealth);
-    } catch (err: any) {
-      console.error("Dashboard data fetch error:", err);
-      showToast(err.message || "Failed to sync with SOC backend", "error");
+  // Update selectedEvent when events change
+  useEffect(() => {
+    if (events.length > 0) {
+      setSelectedEvent((prev) => {
+        if (!prev) return events[0];
+        const exists = events.find((e) => e.id === prev.id);
+        return exists || events[0];
+      });
     }
-  };
+  }, [events]);
 
   const showToast = (message: string, type: "error" | "info" = "info") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
-
-  // Poll data every 3 seconds
-  useEffect(() => {
-    fetchData(); // Initial load
-    const interval = setInterval(() => {
-      if (isPolling) fetchData();
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [isPolling]);
 
   // Calculations for stats
   const totalEventsToday = events.length;
@@ -87,26 +75,17 @@ export default function Dashboard() {
               System Operations Active
             </span>
           </div>
-          <h1 className="font-display text-3xl font-extrabold tracking-tight text-soc-textPrimary">
-            Setu Fraud Signals & Identity SOC
-          </h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-3xl font-extrabold tracking-tight text-soc-textPrimary">
+              Setu Fraud Signals & Identity SOC
+            </h1>
+            <span className={`inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded-full border
+              ${connected ? 'border-[#00E5A0] text-[#00E5A0]' : 'border-[#FF3B5C] text-[#FF3B5C]'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-[#00E5A0] animate-pulse' : 'bg-[#FF3B5C]'}`} />
+              {connected ? 'LIVE' : 'RECONNECTING...'}
+            </span>
+          </div>
         </div>
-
-        {/* Sync Indicator Control */}
-        <button
-          onClick={() => {
-            setIsPolling(!isPolling);
-            showToast(isPolling ? "Polling suspended" : "Real-time sync resumed", "info");
-          }}
-          className={`flex items-center gap-2 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all ${
-            isPolling
-              ? "border-soc-cyan/30 bg-soc-cyan/5 text-soc-cyan"
-              : "border-soc-border bg-soc-surface text-soc-textSecondary hover:text-soc-textPrimary"
-          }`}
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />
-          {isPolling ? "SYNCING LIVE" : "PAUSED"}
-        </button>
       </div>
 
       {/* Top Stats Banner */}

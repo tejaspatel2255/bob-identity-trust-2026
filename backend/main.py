@@ -67,6 +67,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import asyncio
+import json
+
+class EventBroadcaster:
+    def __init__(self):
+        self.subscribers: list[asyncio.Queue] = []
+
+    async def subscribe(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue()
+        self.subscribers.append(q)
+        return q
+
+    def unsubscribe(self, q: asyncio.Queue):
+        if q in self.subscribers:
+            self.subscribers.remove(q)
+
+    async def publish(self, event: dict):
+        for q in self.subscribers:
+            await q.put(event)
+
+broadcaster = EventBroadcaster()
+
 # Initialize Supabase Client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -868,9 +890,13 @@ def shutdown_event():
     print("Neo4j connection closed.")
 
 
+class RiskScoreResponseWithConfidence(RiskScoreResponse):
+    id: Optional[str] = None
+    confidence: Optional[Dict[str, Any]] = None
+
 @app.post(
     "/risk/score",
-    response_model=RiskScoreResponse,
+    response_model=RiskScoreResponseWithConfidence,
     status_code=status.HTTP_200_OK,
     summary="Compute risk score and generate plain-language explanation"
 )
@@ -887,6 +913,10 @@ async def get_risk_score(event: RiskScoreRequest):
 
     # 3. Determine friction action
     action_dict = get_friction_action(risk_score)
+
+    # Calculate model confidence
+    from backend.explainer import calculate_confidence
+    confidence = calculate_confidence(risk_score, shap_attrs)
 
     timestamp_str = datetime.now(pytz.timezone("Asia/Kolkata")).isoformat()
     event_uuid = str(uuid.uuid4())
@@ -910,7 +940,8 @@ async def get_risk_score(event: RiskScoreRequest):
         "action_level": action_dict["level"],
         "timestamp": timestamp_str,
         "reviewed": False,
-        "review_outcome": None
+        "review_outcome": None,
+        "confidence": confidence
     }
     
     # Save to local in-memory feed
@@ -935,7 +966,8 @@ async def get_risk_score(event: RiskScoreRequest):
                 "action_level": action_dict["level"],
                 "timestamp": timestamp_str,
                 "reviewed": False,
-                "review_outcome": None
+                "review_outcome": None,
+                "confidence": confidence
             }
             sb.table("risk_events").insert(supabase_row).execute()
         except Exception as e:
@@ -943,7 +975,8 @@ async def get_risk_score(event: RiskScoreRequest):
     else:
         print("Warning: Supabase client not initialized. Skipping DB insert.")
 
-    return {
+    response_dict = {
+        "id": event_uuid,
         "entity_id": event.entity_id,
         "entity_type": event.entity_type,
         "customer_id": customer_id,
@@ -954,8 +987,14 @@ async def get_risk_score(event: RiskScoreRequest):
         "fallback_used": explanation_res["fallback_used"],
         "model_id": explanation_res["model_id"],
         "action": action_dict,
-        "timestamp": timestamp_str
+        "timestamp": timestamp_str,
+        "confidence": confidence
     }
+
+    # Broadcast event to SSE subscribers
+    await broadcaster.publish(response_dict)
+
+    return response_dict
 
 
 @app.get(
@@ -1048,5 +1087,74 @@ async def get_event(event_id: str):
             return result.data[0]
             
         raise HTTPException(status_code=404, detail="Event not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+from fastapi.responses import StreamingResponse, Response
+from backend.pdf_generator import generate_case_pdf
+
+@app.get("/stream/events")
+async def stream_events():
+    """
+    SSE endpoint. Frontend connects once and receives every new risk event
+    pushed in real time. No polling needed.
+    """
+    async def event_generator():
+        q = await broadcaster.subscribe()
+        try:
+            yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
+            while True:
+                event = await q.get()
+                yield f"event: risk_event\ndata: {json.dumps(event)}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            broadcaster.unsubscribe(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+@app.get("/risk/events/{event_id}/pdf")
+async def download_case_pdf(event_id: str):
+    """Generates and returns a downloadable PDF audit report for a case."""
+    event_data = None
+    # Try in-memory first to support offline/demo mode out of the box
+    for ev in IN_MEMORY_RISK_EVENTS:
+        if ev.get("id") == event_id or ev.get("entity_id") == event_id:
+            event_data = ev
+            break
+            
+    if not event_data:
+        sb = get_supabase()
+        if sb:
+            try:
+                result = sb.table("risk_events").select("*").eq("id", event_id).execute()
+                if result.data:
+                    event_data = result.data[0]
+                else:
+                    result = sb.table("risk_events").select("*").eq("entity_id", event_id).execute()
+                    if result.data:
+                        event_data = result.data[0]
+            except Exception as e:
+                print(f"Error fetching from Supabase for PDF: {e}")
+    
+    if not event_data:
+        raise HTTPException(status_code=404, detail="Event not found")
+        
+    try:
+        pdf_bytes = generate_case_pdf(event_data)
+        filename = f"setu_audit_{event_id[:8]}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

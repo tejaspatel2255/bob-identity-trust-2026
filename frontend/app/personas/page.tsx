@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { api } from "../../lib/api";
 import { Persona } from "../../lib/types";
+import { getRandomAttack } from "../../lib/randomAttack";
 import PersonaCard from "../../components/PersonaCard";
 import RiskScoreRing from "../../components/RiskScoreRing";
 import TypewriterText from "../../components/TypewriterText";
@@ -74,6 +75,7 @@ const DEMO_PERSONAS: Persona[] = [
 
 export default function Personas() {
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
+  const [randomPersona, setRandomPersona] = useState<Persona | null>(null);
   const [result, setResult] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,7 +142,7 @@ export default function Personas() {
       </div>
 
       {/* Persona Cards Horizontal Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
         {DEMO_PERSONAS.map((persona) => (
           <PersonaCard
             key={persona.id}
@@ -150,6 +152,57 @@ export default function Personas() {
             isActive={selectedPersona?.id === persona.id}
           />
         ))}
+
+        {/* 4th Card: Random Attack Generator */}
+        <div className={`flex flex-col justify-between rounded-lg border p-6 transition-all duration-300 ${
+          selectedPersona?.id.startsWith("persona-random-")
+            ? "border-soc-cyan bg-soc-surface shadow-[0_0_15px_rgba(0,212,255,0.1)] scale-[1.02]"
+            : "bg-soc-surface border-soc-red/20 hover:border-soc-red bg-soc-red/5 hover:shadow-[0_0_15px_rgba(255,59,92,0.1)]"
+        }`}>
+          <div>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 bg-soc-bg border-soc-red text-soc-red animate-pulse relative">
+                <ShieldAlert className="h-6 w-6" />
+                <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-soc-red opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-soc-red"></span>
+                </span>
+              </div>
+              <div>
+                <h3 className="font-display text-base font-bold text-soc-textPrimary">
+                  {randomPersona ? randomPersona.name : "Random Threat"}
+                </h3>
+                <span className="font-mono text-[9px] uppercase tracking-wider text-soc-textSecondary">
+                  {randomPersona ? randomPersona.entityId : "DYNAMIC PAYLOAD"}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-soc-textSecondary leading-relaxed mb-6 min-h-[40px]">
+              {randomPersona 
+                ? randomPersona.description 
+                : "Generates a randomized attack vector (sim swap, impossible geovelocity, suspicious device, employee bulk query) with custom parameters."
+              }
+            </p>
+          </div>
+          
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => {
+                const newPersona = getRandomAttack();
+                setRandomPersona(newPersona);
+                runSimulation(newPersona);
+              }}
+              disabled={isLoading}
+              className={`w-full rounded py-2 text-xs font-semibold tracking-wider uppercase transition-all duration-200 border ${
+                isLoading
+                  ? "border-soc-border bg-soc-surface text-soc-textSecondary cursor-not-allowed"
+                  : "border-soc-red bg-soc-red/10 text-soc-red hover:bg-soc-red hover:text-soc-bg"
+              }`}
+            >
+              Generate & Run Attack
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Results Terminal Block */}

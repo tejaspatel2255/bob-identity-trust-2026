@@ -71,8 +71,26 @@ export default function EventCard({ event, isSelected, onClick }: EventCardProps
               </span>
             </div>
 
-            <div className="font-mono text-sm font-semibold text-soc-textPrimary tracking-tight">
-              {event.entity_id}
+            <div className="flex items-center gap-2">
+              <div className="font-mono text-sm font-semibold text-soc-textPrimary tracking-tight">
+                {event.entity_id}
+              </div>
+              {event.confidence && (
+                <div
+                  title={event.confidence.reasoning}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[9px] font-mono cursor-help"
+                  style={{
+                    borderColor: event.confidence.confidence_label === 'HIGH' ? '#00D4FF'
+                               : event.confidence.confidence_label === 'MEDIUM' ? '#FFB800'
+                               : '#FF3B5C',
+                    color: event.confidence.confidence_label === 'HIGH' ? '#00D4FF'
+                         : event.confidence.confidence_label === 'MEDIUM' ? '#FFB800'
+                         : '#FF3B5C'
+                  }}
+                >
+                  CONF: {event.confidence.confidence_label} {event.confidence.confidence_pct}%
+                </div>
+              )}
             </div>
           </div>
         </div>

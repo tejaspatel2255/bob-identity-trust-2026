@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "../../lib/api";
 import { RiskEvent } from "../../lib/types";
+import { useEventStream } from "../../lib/useEventStream";
 import { 
   ArrowLeft,
   ChevronLeft, 
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 
 export default function LiveFeed() {
+  const { events: streamEvents, connected } = useEventStream(50);
   const [events, setEvents] = useState<RiskEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<RiskEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,21 +36,12 @@ export default function LiveFeed() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const loadEvents = async () => {
-    try {
-      setLoading(true);
-      const data = await api.getEvents();
-      setEvents(data);
-    } catch (err: any) {
-      showToast(err.message || "Failed to load events", "error");
-    } finally {
+  useEffect(() => {
+    setEvents(streamEvents);
+    if (streamEvents.length > 0) {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadEvents();
-  }, []);
+  }, [streamEvents]);
 
   // Filter application
   useEffect(() => {
@@ -109,9 +102,16 @@ export default function LiveFeed() {
           <span className="font-mono text-[10px] text-soc-textSecondary uppercase tracking-widest font-semibold">
             SEC Ops Archives
           </span>
-          <h1 className="font-display text-2xl font-extrabold tracking-tight text-soc-textPrimary">
-            Complete Risk Events Log
-          </h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-2xl font-extrabold tracking-tight text-soc-textPrimary">
+              Complete Risk Events Log
+            </h1>
+            <span className={`inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded-full border
+              ${connected ? 'border-[#00E5A0] text-[#00E5A0]' : 'border-[#FF3B5C] text-[#FF3B5C]'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-[#00E5A0] animate-pulse' : 'bg-[#FF3B5C]'}`} />
+              {connected ? 'LIVE' : 'RECONNECTING...'}
+            </span>
+          </div>
         </div>
       </div>
 

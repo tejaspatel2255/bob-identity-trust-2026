@@ -192,3 +192,36 @@ def mock_score_event(event_data: dict) -> tuple[float, list]:
     attrs = sorted(attrs, key=lambda x: x["contribution"], reverse=True)
     
     return round(score, 1), attrs
+
+def calculate_confidence(risk_score: float, shap_attrs: list) -> dict:
+    """
+    Estimates model confidence based on:
+    1. Distance from decision boundaries (30 and 65)
+    2. SHAP attribution concentration
+    Returns: { confidence_pct, confidence_label, reasoning }
+    """
+    boundaries = [0, 30, 65, 100]
+    min_distance = min(abs(risk_score - b) for b in boundaries)
+    boundary_confidence = min(min_distance / 15.0, 1.0)
+
+    if shap_attrs:
+        total = sum(abs(a["contribution"]) for a in shap_attrs)
+        top   = abs(shap_attrs[0]["contribution"]) if shap_attrs else 0
+        concentration = (top / total) if total > 0 else 0.5
+    else:
+        concentration = 0.3
+
+    raw = (boundary_confidence * 0.6) + (concentration * 0.4)
+    pct = round(min(max(raw * 100, 35), 99), 1)
+
+    if pct >= 80:
+        label = "HIGH"
+        reasoning = "Score is well clear of decision boundaries with a dominant risk factor."
+    elif pct >= 55:
+        label = "MEDIUM"
+        reasoning = "Score is moderately clear of boundaries; review recommended."
+    else:
+        label = "LOW"
+        reasoning = "Score is near a decision boundary — manual review strongly advised."
+
+    return {"confidence_pct": pct, "confidence_label": label, "reasoning": reasoning}

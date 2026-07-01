@@ -11,6 +11,12 @@ export interface FrictionAction {
   route_to: string | null;
 }
 
+export interface Confidence {
+  confidence_pct: number;
+  confidence_label: 'HIGH' | 'MEDIUM' | 'LOW';
+  reasoning: string;
+}
+
 export interface RiskEvent {
   id: string;
   entity_id: string;
@@ -26,6 +32,7 @@ export interface RiskEvent {
   timestamp: string;
   reviewed: boolean;
   review_outcome: string | null;
+  confidence?: Confidence;
 }
 
 export interface GraphNode {
@@ -53,4 +60,14 @@ export interface HealthStatus {
   flagged_last_24h: number;
   model_version: string;
   supabase_connected: boolean;
+}
+
+export interface Persona {
+  id: string;
+  name: string;
+  trustLevel: 'safe' | 'warning' | 'danger' | 'purple';
+  description: string;
+  entityType: 'CUSTOMER_SESSION' | 'EMPLOYEE_ACCESS';
+  entityId: string;
+  eventData: Record<string, any>;
 }

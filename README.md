@@ -1,4 +1,4 @@
- ○ Compiling /_not-found ...# Setu — Unified Identity Trust Graph & Fraud Prevention
+# Setu — Unified Identity Trust Graph & Fraud Prevention
 
 **Setu** (meaning *Bridge* in Sanskrit) is a production-grade Unified Identity Trust Graph and real-time event ingestion platform built for the **Bank of Baroda 2026 Cybersecurity Hackathon** under the theme **Identity Trust & Fraud Prevention**.
 
@@ -6,12 +6,19 @@ The platform is designed to identify compromised user accounts, device takeover 
 
 ---
 
-## 🚀 Project Status
+## 🚀 Project Status & Features
 - [x] **Phase 1**: Graph Schema & Uniqueness Constraints setup.
 - [x] **Phase 2**: Synthetic Data Generator Seeding Script (`seed_graph.py`) with 300+ Customers, 25 Fraud scenarios, and 15 Insider threats.
 - [x] **Phase 3**: Event Ingestion REST API (`FastAPI`, `Pydantic v2`, Parameterized Cypher Queries).
 - [x] **Phase 4**: Explainability LLM Layer (Sequential fallbacks via OpenRouter: Llama 3.3 70B -> Gemini Flash -> GPT-4o-Mini -> local templates).
 - [x] **Phase 5**: Next.js 14 Interactive Cybersecurity SOC Dashboard (featuring real-time incident streams, signal breakdown charts, and D3 force-directed topological subgraphs).
+- [x] **Phase 6**: Compliance Mapping (`compliance_map.md`) & Automated Test Suite (`demo_runner.py`).
+
+### 🌟 Phase 6+ Real-Time & Compliance Extensions
+1. **Server-Sent Events (SSE) Live Feed**: The SOC Dashboard now connects via a reactive EventSource stream to `/stream/events` on the backend. Page polling is fully replaced; threats and simulation logs are pushed to the UI instantly without browser redraws.
+2. **Model Confidence Scoring Engine**: Estimates the confidence (`HIGH`, `MEDIUM`, `LOW`) of risk predictions based on decision boundaries and SHAP attribution concentration. Badges are displayed in all event list items and audit pages.
+3. **Random Threat Simulator**: A 4th simulation persona in `/personas` generating randomized cyber threat profiles (e.g. SIM swaps, impossible travels, bulk privilege queries) on the fly with dynamic payload parameters.
+4. **Compliance Audit PDF Exports**: Zero-dependency PDF generation in `pdf_generator.py` serving printable, secure forensic case sheets directly from `/risk/events/{event_id}/pdf` in one click.
 
 ---
 
@@ -24,15 +31,18 @@ The platform is designed to identify compromised user accounts, device takeover 
 │   requirements.txt    # Base python libraries (neo4j, python-dotenv, faker)
 │   schema.md           # Formal database schema definition
 │   seed_graph.py       # Batched Python seeder script for Neo4j database
+│   demo_runner.py      # Automated terminal testing client for threat simulation
+│   compliance_map.md   # Regulatory compliance matrix (RBI guidelines, SOC2, GDPR)
 │   README.md           # Project documentation
 │
 ├───backend/
 │   │   db.py           # Neo4j Driver Connection Singleton & Session Context
-│   │   explainer.py    # Mock GNN Scorer & OpenRouter LLM Explainer fallback chain
+│   │   explainer.py    # Mock GNN Scorer, confidence scorer, and OpenRouter LLM fallbacks
 │   │   haversine.py    # Geovelocity calculation logic
-│   │   main.py         # FastAPI router, real-time rules, and error handlers
+│   │   main.py         # FastAPI router, SSE stream broadcaster, and REST endpoints
 │   │   models.py       # Pydantic validation schemas
-│   │   requirements.txt# FastAPI and Uvicorn runtime dependencies
+│   │   pdf_generator.py # Zero-dependency reportlab PDF generator
+│   │   requirements.txt# FastAPI, Uvicorn, and ReportLab dependencies
 │
 └───frontend/
     │   package.json    # Next.js dependencies (react-force-graph-2d, recharts, lucide-react)
@@ -41,13 +51,13 @@ The platform is designed to identify compromised user accounts, device takeover 
     ├───app/
     │   │   layout.tsx  # Root shell and design provider
     │   │   page.tsx    # Redirect handler to dashboard
-    │   │   dashboard/  # Main operations view (threat feed, radar, and status charts)
+    │   │   dashboard/  # Main operations view with SSE connection badge
     │   │   graph-view/ # Full global network topology analyzer
-    │   │   personas/   # Interactive threat sandbox simulator console
-    │   │   cases/      # Forensic deep dive with interactive 2-hop subgraphs
+    │   │   personas/   # Threat sandbox featuring the Random Attack Generator
+    │   │   cases/      # Forensic deep dive with PDF download controls
     │   │
     │   ├───components/ # Custom reusable components (GraphCanvas, Charts, Cards)
-    │   └───lib/        # API client helpers and TS type contracts
+    │   └───lib/        # API client helpers, Types, and SSE custom hooks
 ```
 
 ---
@@ -150,7 +160,8 @@ Open **[http://localhost:3000/dashboard](http://localhost:3000/dashboard)** in y
 ---
 
 ## 🛡️ Core Demo Features
-1. **Threat Simulation Sandbox** (`/personas`): Trigger real-time transaction ingestion vectors. The scorer generates an AI risk assessment, runs policy decision friction blocks, and streams results.
-2. **Operations Dashboard** (`/dashboard`): Monitor active incident feeds, radar vector breakdowns, and Neo4j database health metrics.
-3. **Forensic Investigator** (`/cases/[id]`): Drill down into a specific flagged customer or staff member. Features dynamic topological visualization to trace multi-hop fraud paths.
+1. **Threat Simulation Sandbox** (`/personas`): Trigger real-time transaction ingestion vectors. Includes default personas (Priya, Ramesh, Attacker) and the **Random Threat Generator** to spawn infinite customized vectors.
+2. **Operations Dashboard** (`/dashboard`): Monitor active incident feeds, radar vector breakdowns, and Neo4j database health metrics. Runs entirely over Server-Sent Events for instant reactive updates.
+3. **Forensic Investigator** (`/cases/[id]`): Drill down into a specific flagged customer or staff member. Features dynamic topological visualization to trace multi-hop fraud paths, custom confidence markers, and **One-Click Audit PDF download**.
 4. **Global Graph Analyzer** (`/graph-view`): Interactive visualization of the entire identity trust graph.
+5. **Command Line Demo Script** (`demo_runner.py`): Test the threat calculation engine directly from your terminal. Run `python demo_runner.py` to trigger parallel requests to the API.

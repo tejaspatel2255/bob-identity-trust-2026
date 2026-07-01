@@ -15,7 +15,8 @@ import {
   ShieldAlert, 
   Database,
   Cpu, 
-  Download, 
+  Download,
+  FileDown, 
   Layers 
 } from "lucide-react";
 
@@ -167,14 +168,24 @@ Generated on ${new Date().toLocaleString("en-IN")}
           </div>
         </div>
 
-        {/* Action button */}
-        <button
-          onClick={downloadCaseReport}
-          className="flex items-center justify-center gap-2 rounded border border-soc-cyan bg-soc-cyan/10 hover:bg-soc-cyan hover:text-soc-bg px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-soc-cyan transition-all"
-        >
-          <Download className="h-4 w-4" />
-          DOWNLOAD CASE SUMMARY
-        </button>
+        {/* Action buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={downloadCaseReport}
+            className="flex items-center justify-center gap-2 rounded border border-soc-border bg-soc-surface hover:border-soc-cyan text-soc-textSecondary hover:text-soc-cyan px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition-all"
+          >
+            <Download className="h-4 w-4" />
+            DOWNLOAD CASE SUMMARY
+          </button>
+          
+          <button
+            onClick={() => api.downloadCasePdf(event.id)}
+            className="flex items-center justify-center gap-2 rounded border border-soc-cyan bg-soc-cyan/10 hover:bg-soc-cyan hover:text-soc-bg px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-soc-cyan transition-all"
+          >
+            <FileDown className="h-4 w-4" />
+            DOWNLOAD CASE PDF
+          </button>
+        </div>
       </div>
 
       {/* Main Core Columns */}
@@ -190,8 +201,24 @@ Generated on ${new Date().toLocaleString("en-IN")}
                 <h3 className="font-display text-sm font-bold text-soc-textSecondary uppercase tracking-wider mb-1">
                   Threat Probability
                 </h3>
-                <div className="font-mono text-3xl font-bold text-soc-textPrimary mb-1">
+                <div className="font-mono text-3xl font-bold text-soc-textPrimary mb-1 flex items-center gap-2">
                   {event.risk_score.toFixed(2)}%
+                  {event.confidence && (
+                    <span
+                      title={event.confidence.reasoning}
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-mono font-bold cursor-help"
+                      style={{
+                        borderColor: event.confidence.confidence_label === 'HIGH' ? '#00D4FF'
+                                   : event.confidence.confidence_label === 'MEDIUM' ? '#FFB800'
+                                   : '#FF3B5C',
+                        color: event.confidence.confidence_label === 'HIGH' ? '#00D4FF'
+                             : event.confidence.confidence_label === 'MEDIUM' ? '#FFB800'
+                             : '#FF3B5C'
+                      }}
+                    >
+                      {event.confidence.confidence_label} ({event.confidence.confidence_pct}%)
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] text-soc-textSecondary font-mono uppercase">
                   Logged: {new Date(event.timestamp).toLocaleString("en-IN")}

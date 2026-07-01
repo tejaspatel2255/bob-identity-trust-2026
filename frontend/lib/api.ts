@@ -39,4 +39,8 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ reviewed, review_outcome }),
     }),
+
+  downloadCasePdf: (eventId: string): void => {
+    window.open(`${BASE_URL}/risk/events/${eventId}/pdf`, '_blank');
+  },
 };
