@@ -1158,3 +1158,155 @@ async def download_case_pdf(event_id: str):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/correlate/{account_id}")
+def get_correlation(account_id: str):
+    """
+    Cross-entity correlation: detects insider-assisted account takeover.
+
+    Pattern: Employee ACCESSED an account AND a RECOVERY_ATTEMPTED edge
+    fired on the same account within a 2-hour window.
+
+    Returns a composite alert if pattern is found, or a clean signal if not.
+    """
+    query = """
+    MATCH (e:Employee)-[a:ACCESSED]->(acc:Account {id: $account_id})
+    WITH e, a, acc
+    MATCH (acc)<-[r:RECOVERY_ATTEMPTED]-(c:Customer)
+    WHERE abs(duration.between(
+        datetime(a.timestamp),
+        datetime(r.timestamp)
+    ).minutes) <= 120
+    RETURN
+        e.id AS employee_id,
+        e.name AS employee_name,
+        e.role AS employee_role,
+        a.timestamp AS access_time,
+        a.action_type AS action_type,
+        c.id AS customer_id,
+        c.name AS customer_name,
+        r.timestamp AS recovery_time,
+        r.new_device AS recovery_new_device,
+        acc.id AS account_id,
+        acc.balance_tier AS balance_tier,
+        abs(duration.between(
+            datetime(a.timestamp),
+            datetime(r.timestamp)
+        ).minutes) AS minutes_apart
+    LIMIT 10
+    """
+    with db.get_session() as session:
+        results = session.run(query, account_id=account_id).data()
+
+    if not results:
+        return {
+            "correlated": False,
+            "account_id": account_id,
+            "alert": None,
+            "message": "No insider-assisted takeover pattern detected for this account."
+        }
+
+    # Build composite alert
+    r = results[0]
+    return {
+        "correlated": True,
+        "account_id": account_id,
+        "alert": {
+            "type": "INSIDER_ASSISTED_TAKEOVER",
+            "confidence": "HIGH",
+            "title": "Insider-Assisted Account Takeover Detected",
+            "description": (
+                f"Employee {r['employee_name']} ({r['employee_role']}) accessed "
+                f"account {account_id} ({r['balance_tier']} balance tier) at "
+                f"{r['access_time']}, followed by an account recovery attempt "
+                f"from a {'new device' if r['recovery_new_device'] else 'known device'} "
+                f"for customer {r['customer_name']} just {r['minutes_apart']} minutes later."
+            ),
+            "employee": {
+                "id": r["employee_id"],
+                "name": r["employee_name"],
+                "role": r["employee_role"],
+                "access_time": r["access_time"],
+                "action_type": r["action_type"]
+            },
+            "customer": {
+                "id": r["customer_id"],
+                "name": r["customer_name"],
+                "recovery_time": r["recovery_time"],
+                "recovery_new_device": r["recovery_new_device"]
+            },
+            "minutes_apart": r["minutes_apart"],
+            "all_matches": results
+        }
+    }
+
+@app.get("/correlate/scan/all")
+def scan_all_correlations():
+    """
+    Scans all accounts for the insider-assisted takeover pattern.
+    Returns all correlated account IDs with alert summaries.
+    Used by the dashboard correlation panel.
+    """
+    query = """
+    MATCH (e:Employee)-[a:ACCESSED]->(acc:Account)
+    WITH e, a, acc
+    MATCH (acc)<-[r:RECOVERY_ATTEMPTED]-(c:Customer)
+    WHERE abs(duration.between(
+        datetime(a.timestamp),
+        datetime(r.timestamp)
+    ).minutes) <= 120
+    RETURN DISTINCT
+        acc.id AS account_id,
+        acc.balance_tier AS balance_tier,
+        e.name AS employee_name,
+        e.role AS employee_role,
+        c.name AS customer_name,
+        abs(duration.between(
+            datetime(a.timestamp),
+            datetime(r.timestamp)
+        ).minutes) AS minutes_apart
+    ORDER BY minutes_apart ASC
+    LIMIT 20
+    """
+    with db.get_session() as session:
+        results = session.run(query).data()
+
+    return {
+        "total_correlated_accounts": len(results),
+        "alerts": results
+    }
+
+@app.get("/risk/history/{customer_id}")
+async def get_risk_history(customer_id: str):
+    """
+    Returns the last 10 risk scores for a customer, ordered by timestamp.
+    Used by the /cases/[id] page sparkline chart.
+    """
+    sb = get_supabase()
+    if not sb:
+        # Return mock history for demo if Supabase not configured
+        import random, datetime
+        random.seed(hash(customer_id) % 1000)
+        mock_history = []
+        base_score = random.uniform(10, 30)
+        for i in range(10):
+            ts = (datetime.datetime.utcnow() -
+                  datetime.timedelta(hours=(10 - i) * 6)).isoformat()
+            score = min(max(base_score + random.uniform(-5, 15), 0), 100)
+            mock_history.append({"timestamp": ts, "risk_score": round(score, 1)})
+            base_score = score
+        return {"customer_id": customer_id, "history": mock_history}
+
+    try:
+        result = (sb.table("risk_events")
+                    .select("timestamp, risk_score")
+                    .eq("customer_id", customer_id)
+                    .order("timestamp", desc=False)
+                    .limit(10)
+                    .execute())
+        return {
+            "customer_id": customer_id,
+            "history": result.data or []
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

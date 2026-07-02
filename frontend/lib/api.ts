@@ -45,4 +45,13 @@ export const api = {
   downloadCasePdf: (eventId: string): void => {
     window.open(`${BASE_URL}/risk/events/${eventId}/pdf`, '_blank');
   },
+
+  getCorrelation: (accountId: string) =>
+    apiFetch(`/correlate/${accountId}`),
+
+  scanAllCorrelations: () =>
+    apiFetch('/correlate/scan/all'),
+
+  getRiskHistory: (customerId: string) =>
+    apiFetch(`/risk/history/${customerId}`),
 };

@@ -8,6 +8,7 @@ import { getRandomAttack } from "../../lib/randomAttack";
 import PersonaCard from "../../components/PersonaCard";
 import RiskScoreRing from "../../components/RiskScoreRing";
 import TypewriterText from "../../components/TypewriterText";
+import AttackTimeline from "../../components/AttackTimeline";
 import { 
   ArrowLeft, 
   Play, 
@@ -302,6 +303,17 @@ export default function Personas() {
           <div className="absolute right-0 bottom-0 top-0 w-[4px] bg-soc-cyan" />
         </div>
       )}
+
+      {/* Full Attack Simulation */}
+      <div className="mt-12">
+        <h2 className="text-soc-textPrimary font-bold text-xl mb-2 flex items-center gap-2">
+          🎬 Full Attack Simulation
+        </h2>
+        <p className="text-soc-textSecondary text-sm mb-6">
+          Watch a complete SIM-swap identity attack unfold across 5 stages, with live risk scoring at each step.
+        </p>
+        <AttackTimeline />
+      </div>
     </div>
   );
 }

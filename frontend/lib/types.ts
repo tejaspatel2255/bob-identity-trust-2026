@@ -72,3 +72,51 @@ export interface Persona {
   entityId: string;
   eventData: Record<string, any>;
 }
+
+export interface CorrelationEmployee {
+  id: string;
+  name: string;
+  role: string;
+  access_time: string;
+  action_type: string;
+}
+
+export interface CorrelationCustomer {
+  id: string;
+  name: string;
+  recovery_time: string;
+  recovery_new_device: boolean;
+}
+
+export interface CorrelationAlert {
+  type: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  title: string;
+  description: string;
+  employee: CorrelationEmployee;
+  customer: CorrelationCustomer;
+  minutes_apart: number;
+  all_matches: Record<string, unknown>[];
+}
+
+export interface CorrelationResult {
+  correlated: boolean;
+  account_id: string;
+  alert: CorrelationAlert | null;
+  message?: string;
+}
+
+export interface ScanResult {
+  total_correlated_accounts: number;
+  alerts: Record<string, unknown>[];
+}
+
+export interface RiskHistoryPoint {
+  timestamp: string;
+  risk_score: number;
+}
+
+export interface RiskHistory {
+  customer_id: string;
+  history: RiskHistoryPoint[];
+}

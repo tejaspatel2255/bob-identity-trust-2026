@@ -9,6 +9,7 @@ import RiskScoreRing from "../../../components/RiskScoreRing";
 import ShapBarChart from "../../../components/ShapBarChart";
 import TypewriterText from "../../../components/TypewriterText";
 import GraphCanvas from "../../../components/GraphCanvas";
+import RiskSparkline from "../../../components/RiskSparkline";
 import { 
   ArrowLeft, 
   FileText, 
@@ -276,6 +277,13 @@ Generated on ${new Date().toLocaleString("en-IN")}
               </span>
             </div>
           </div>
+
+          {event.customer_id && (
+            <RiskSparkline
+              customerId={event.customer_id}
+              currentScore={event.risk_score}
+            />
+          )}
 
           {/* Mitigation Actions Console */}
           <div className="rounded-lg border border-soc-border bg-soc-surface p-6">

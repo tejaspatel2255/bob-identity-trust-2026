@@ -9,6 +9,7 @@ import EventCard from "../../components/EventCard";
 import RadarChart from "../../components/RadarChart";
 import ShapBarChart from "../../components/ShapBarChart";
 import LLMStatus from "../../components/LLMStatus";
+import CorrelationPanel from "../../components/CorrelationPanel";
 import { 
   ShieldAlert, 
   Activity, 
@@ -268,7 +269,7 @@ export default function Dashboard() {
         </div>
 
         {/* Column 3: LLM & Database Status Panel (25%) */}
-        <div className="lg:col-span-3 flex flex-col gap-6">
+        <div className="lg:col-span-3 flex flex-col gap-4">
           {/* LLM Status DOTS */}
           <LLMStatus activeProvider={currentProvider} />
 
@@ -349,6 +350,9 @@ export default function Dashboard() {
               <ChevronRight className="h-4 w-4" />
             </Link>
           )}
+
+          {/* Cross-Entity Correlation Alert Panel */}
+          <CorrelationPanel />
         </div>
       </div>
 
