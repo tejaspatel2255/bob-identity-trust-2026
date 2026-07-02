@@ -13,6 +13,10 @@ The platform is designed to identify compromised user accounts, device takeover 
 - [x] **Phase 4**: Explainability LLM Layer (Sequential fallbacks via OpenRouter: Llama 3.3 70B -> Gemini Flash -> GPT-4o-Mini -> local templates).
 - [x] **Phase 5**: Next.js 14 Interactive Cybersecurity SOC Dashboard (featuring real-time incident streams, signal breakdown charts, and D3 force-directed topological subgraphs).
 - [x] **Phase 6**: Compliance Mapping (`compliance_map.md`) & Automated Test Suite (`demo_runner.py`).
+- [x] **Phase 7**: Setu Advanced Identity & Insider threat features:
+  - **Interactive Attack Simulation Timeline**: Programmatic execution of a 5-step SIM-swap attack with live GNN risk calculation and hard blocking responses.
+  - **Cross-Entity Correlation Engine**: Native Neo4j Cypher pattern matching to detect insider-assisted account takeover (Employee account access followed by Customer recovery attempt within 2 hours).
+  - **Risk Score History Sparkline**: Interactive visual history trends (last 10 events) for risk cases using Recharts.
 
 ### 🌟 Phase 6+ Real-Time & Compliance Extensions
 1. **Server-Sent Events (SSE) Live Feed**: The SOC Dashboard now connects via a reactive EventSource stream to `/stream/events` on the backend. Page polling is fully replaced; threats and simulation logs are pushed to the UI instantly without browser redraws.
@@ -56,7 +60,7 @@ The platform is designed to identify compromised user accounts, device takeover 
     │   │   personas/   # Threat sandbox featuring the Random Attack Generator
     │   │   cases/      # Forensic deep dive with PDF download controls
     │   │
-    │   ├───components/ # Custom reusable components (GraphCanvas, Charts, Cards)
+    │   ├───components/ # Custom UI components (AttackTimeline, CorrelationPanel, RiskSparkline, GraphCanvas)
     │   └───lib/        # API client helpers, Types, and SSE custom hooks
 ```
 
