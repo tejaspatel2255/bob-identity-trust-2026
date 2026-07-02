@@ -16,15 +16,54 @@ class MockResult:
         self._records = records
     def single(self):
         return self._records[0] if self._records else None
+    def data(self):
+        return self._records
     def __iter__(self):
         return iter(self._records)
 
 class MockSession:
     def run(self, query, parameters=None):
         if "count(n)" in query:
-            return MockResult([{"count": 10}])
+            return MockResult([{"count": 18}])
         if "count(r)" in query:
             return MockResult([{"count": 12}])
+        if "Employee" in query and "ACCESSED" in query:
+            if "account_id" in query or "$account_id" in query:
+                acc_id = parameters.get("account_id", "ACC_VIP_1") if parameters else "ACC_VIP_1"
+                return MockResult([
+                    {
+                        "employee_id": "EMP_RAMESH_PATEL",
+                        "employee_name": "Ramesh Patel",
+                        "employee_role": "BRANCH_OFFICER",
+                        "access_time": "2026-07-02T10:45:00",
+                        "action_type": "KYC_OVERRIDE_UNAUTHORIZED",
+                        "customer_id": "CUST_VIP_1",
+                        "customer_name": "VIP Customer 1",
+                        "recovery_time": "2026-07-02T10:59:00",
+                        "recovery_new_device": True,
+                        "account_id": acc_id,
+                        "balance_tier": "HIGH",
+                        "minutes_apart": 14
+                    }
+                ])
+            return MockResult([
+                {
+                    "account_id": "ACC_VIP_1",
+                    "balance_tier": "HIGH",
+                    "employee_name": "Ramesh Patel",
+                    "employee_role": "BRANCH_OFFICER",
+                    "customer_name": "VIP Customer 1",
+                    "minutes_apart": 14
+                },
+                {
+                    "account_id": "ACC_VIP_2",
+                    "balance_tier": "HIGH",
+                    "employee_name": "Ramesh Patel",
+                    "employee_role": "BRANCH_OFFICER",
+                    "customer_name": "VIP Customer 2",
+                    "minutes_apart": 42
+                }
+            ])
         return MockResult([])
     def close(self):
         pass
